@@ -424,8 +424,6 @@ fluxion_startup() {
 }
 
 fluxion_shutdown() {
-  if [ $FLUXIONDebug ]; then exit 0; fi
-
   # Clean up any tmux windows we created.
   if type -t fluxion_window_cleanup &> /dev/null; then
     fluxion_window_cleanup
