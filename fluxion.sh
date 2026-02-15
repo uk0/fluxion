@@ -22,7 +22,7 @@ readonly FLUXIONNoiseFloor=-90
 readonly FLUXIONNoiseCeiling=-60
 
 readonly FLUXIONVersion=6
-readonly FLUXIONRevision=19
+readonly FLUXIONRevision=20
 
 # Declare window ration bigger = smaller windows
 FLUXIONWindowRatio=4
@@ -1667,11 +1667,8 @@ fluxion_get_target() {
       emptyMessage="${CRed}No networks found on this channel.$CClr\n\n"
     fi
 
-    if ! io_query_choice "$emptyMessage" \
-      "$FLUXIONGeneralBackOption"; then
-      return 1
-    fi
-
+    local choices=("$FLUXIONGeneralBackOption")
+    io_query_choice "$emptyMessage" choices[@]
     return 1
   fi
 
