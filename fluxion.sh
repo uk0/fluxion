@@ -22,7 +22,7 @@ readonly FLUXIONNoiseFloor=-90
 readonly FLUXIONNoiseCeiling=-60
 
 readonly FLUXIONVersion=6
-readonly FLUXIONRevision=17
+readonly FLUXIONRevision=18
 
 # Declare window ration bigger = smaller windows
 FLUXIONWindowRatio=4
@@ -685,6 +685,23 @@ fluxion_handle_target_change() {
 
 # If target monitoring enabled, act on changes.
 trap fluxion_handle_target_change SIGALRM
+
+fluxion_handle_target_absent() {
+  echo "Target absent signal received." > $FLUXIONOutputDevice
+  if [ "$(type -t pause_attack)" = "function" ]; then
+    pause_attack &> $FLUXIONOutputDevice
+  fi
+}
+
+fluxion_handle_target_present() {
+  echo "Target present signal received." > $FLUXIONOutputDevice
+  if [ "$(type -t resume_attack)" = "function" ]; then
+    resume_attack &> $FLUXIONOutputDevice
+  fi
+}
+
+trap fluxion_handle_target_absent SIGUSR1
+trap fluxion_handle_target_present SIGUSR2
 
 
 # ============================================================ #
@@ -1792,6 +1809,8 @@ fluxion_target_tracker_daemon() {
     return 2 # If we're missing target information, we can't track properly.
   fi
 
+  local apPresent=1 # 1 = AP visible, 0 = AP not visible.
+
   while true; do
     echo "[T-Tracker] Scanning all channels for $monitorTimeout seconds..." > $FLUXIONOutputDevice
     # Use --band abg to scan all 2.4GHz and 5GHz channels to detect channel hopping
@@ -1819,10 +1838,22 @@ fluxion_target_tracker_daemon() {
     echo "[T-Tracker] Raw info: $targetInfo" > $FLUXIONOutputDevice
     echo "[T-Tracker] Detected channel: '$targetChannel' (expected: '$FluxionTargetChannel')" > $FLUXIONOutputDevice
 
-    # Skip comparison if targetChannel is empty or invalid (-1 means no channel locked)
+    # Detect presence/absence transitions and signal the parent.
     if [ -z "$targetChannel" ] || [ "$targetChannel" = "-1" ]; then
       echo "[T-Tracker] Target not found or channel invalid, retrying..." > $FLUXIONOutputDevice
+      if [ $apPresent -ne 0 ]; then
+        apPresent=0
+        echo "[T-Tracker] AP disappeared — signalling pause." > $FLUXIONOutputDevice
+        kill -SIGUSR1 $fluxionPID 2>/dev/null
+      fi
       continue
+    fi
+
+    # AP is visible — signal resume if it was previously absent.
+    if [ $apPresent -eq 0 ]; then
+      apPresent=1
+      echo "[T-Tracker] AP reappeared — signalling resume." > $FLUXIONOutputDevice
+      kill -SIGUSR2 $fluxionPID 2>/dev/null
     fi
 
     if [ "$targetChannel" -ne "$FluxionTargetChannel" ] 2>/dev/null; then
@@ -1970,6 +2001,14 @@ fluxion_target_set() {
     "$FluxionTargetChannel" \
   ]; then
     # If we've got a candidate target, ask user if we'll keep targetting it.
+
+    # Ensure rogue MAC is always computed when we have a valid target.
+    # fluxion_get_target normally computes this, but early returns bypass it.
+    if [ -z "$FluxionTargetRogueMAC" ]; then
+      local _rogueHex
+      _rogueHex=$(printf %02X $((0x${FluxionTargetMAC:13:1} + 1)))
+      FluxionTargetRogueMAC="${FluxionTargetMAC::13}${_rogueHex:1:1}${FluxionTargetMAC:14:4}"
+    fi
 
     if [ "$FLUXIONAuto" ]; then
       return 0

