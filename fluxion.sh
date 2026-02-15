@@ -637,6 +637,8 @@ fluxion_handle_exit() {
     if [ -z "${FLUXIONAuto:-}" ]; then
       read -rp "  Press Enter to clean up and exit... " _
       echo
+    else
+      sleep 10
     fi
   fi
 
