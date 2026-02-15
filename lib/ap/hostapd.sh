@@ -93,9 +93,21 @@ function ap_service_start() {
     "hostapd \"$APServiceConfigDirectory/$APServiceMAC-hostapd.conf\""
 
   # Wait till hostapd has started and its virtual interface is ready.
+  # Bail if the window process has already exited (hostapd failed to start).
+  local apWaitRetry=0
   while [ ! "$APServicePID" ]; do
     sleep 1
     APServicePID=$(pgrep -P $APServiceXtermPID 2>/dev/null)
+    # If the window process itself is gone, hostapd failed — abort.
+    if [ -n "$APServiceXtermPID" ] && ! kill -0 "$APServiceXtermPID" 2>/dev/null; then
+      echo "hostapd window exited; AP service failed to start." > $FLUXIONOutputDevice
+      return 1
+    fi
+    apWaitRetry=$((apWaitRetry + 1))
+    if [ $apWaitRetry -ge 15 ]; then
+      echo "hostapd did not start within 15s; aborting." > $FLUXIONOutputDevice
+      return 1
+    fi
   done
 
   ap_service_route

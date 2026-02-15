@@ -2436,6 +2436,9 @@ fluxion_run_attack() {
     # Auto mode: poll for attack self-termination (e.g., handshake captured,
     # password found) by checking for status.txt or success flags.
     echo "Auto mode: waiting for attack to complete..." > $FLUXIONOutputDevice
+    # Snapshot the arbiter PID now — the SIGABRT trap calls stop_attack which
+    # clears HandshakeSnooperArbiterPID, so we need our own copy to track it.
+    local autoArbiterPID="$HandshakeSnooperArbiterPID"
     local autoTimeout=0
     local autoMaxWait=3600  # Max 1 hour
     while [ $autoTimeout -lt $autoMaxWait ]; do
@@ -2449,8 +2452,10 @@ fluxion_run_attack() {
         echo "Auto mode: attack completed (success flag found)." > $FLUXIONOutputDevice
         break
       fi
-      # Check if arbiter daemon completed (handshake snooper)
-      if [ "$HandshakeSnooperArbiterPID" ] && ! kill -0 "$HandshakeSnooperArbiterPID" 2>/dev/null; then
+      # Check if arbiter daemon completed (handshake snooper).
+      # Use the snapshotted PID — HandshakeSnooperArbiterPID may be cleared by
+      # the SIGABRT trap before we get to check it.
+      if [ "$autoArbiterPID" ] && ! kill -0 "$autoArbiterPID" 2>/dev/null; then
         echo "Auto mode: arbiter daemon exited." > $FLUXIONOutputDevice
         break
       fi

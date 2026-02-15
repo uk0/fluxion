@@ -233,7 +233,7 @@ handshake_snooper_set_deauthenticator_identifier() {
   handshake_snooper_unset_deauthenticator_identifier
 
   if [ "$FLUXIONAuto" ]; then
-    HandshakeSnooperDeauthenticatorIdentifier="$HandshakeSnooperAireplayMethodOption"
+    HandshakeSnooperDeauthenticatorIdentifier="$HandshakeSnooperMdk4MethodOption"
     return 0
   fi
 
@@ -297,13 +297,9 @@ handshake_snooper_set_jammer_interface() {
 
   echo "Succeeded get jammer interface." > $FLUXIONOutputDevice
   
-  # For mdk4, we need the actual physical interface that supports wireless extensions.
-  local jammerIface=$selectedInterface
-  # If interface is in hash table (renamed), prefer the physical interface for mdk4 compatibility
-  if [ ! -z "${FluxionInterfaces[$selectedInterface]}" ]; then
-    jammerIface=$selectedInterface
-  fi
-  
+  # Use the renamed monitor interface (e.g. fluxwl0), not the original name.
+  local jammerIface=${FluxionInterfaces[$selectedInterface]:-$selectedInterface}
+
   HandshakeSnooperJammerInterface=$jammerIface
 }
 

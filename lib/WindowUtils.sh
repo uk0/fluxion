@@ -20,8 +20,10 @@ fluxion_window_init() {
 
 		# If not already inside a tmux session, re-exec inside one.
 		if [ -z "$TMUX" ]; then
+			local _sessionName="FLUXION"
+			tmux has-session -t "$_sessionName" 2>/dev/null && _sessionName="FLUXION_$$"
 			exec env LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-				tmux new-session -s FLUXION "$0 $FLUXIONOriginalArgs"
+				tmux new-session -s "$_sessionName" "$0 $FLUXIONOriginalArgs"
 		fi
 
 		# Ensure UTF-8 is set for the current session's environment.
