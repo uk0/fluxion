@@ -2423,6 +2423,12 @@ fluxion_prep_attack() {
 }
 
 fluxion_run_attack() {
+  # Remove stale completion signals left by a previous run so the auto-mode
+  # watcher does not immediately exit on a fresh attack cycle.
+  rm -f "$FLUXIONWorkspacePath/status.txt" \
+        "$FLUXIONWorkspacePath/authenticator_success.flag" \
+        2>/dev/null
+
   start_attack
   fluxion_target_tracker_start
 
