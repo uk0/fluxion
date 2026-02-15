@@ -112,7 +112,7 @@ source "$FLUXIONLibPath/WindowUtils.sh"
 # ============================================================ #
 if ! FLUXIONCLIArguments=$(
     getopt --options="vdk5rinmthb:e:c:l:a:r" \
-      --longoptions="debug,debug-log:,version,killer,5ghz,installer,reloader,help,airmon-ng,multiplexer,target,test,auto,bssid:,essid:,channel:,language:,attack:,ratio,skip-dependencies,scan-time:,scan-only,list-interfaces,interface:" \
+      --longoptions="debug,debug-log:,version,killer,5ghz,installer,reloader,help,airmon-ng,multiplexer,target,test,auto,bssid:,essid:,channel:,language:,attack:,ratio,skip-dependencies,scan-time:,scan-only,list-interfaces,interface:,jammer-interface:,ap-interface:,tracker-interface:" \
       --name="FLUXION V$FLUXIONVersion.$FLUXIONRevision" -- "$@"
   ); then
   echo -e "${CRed}Aborted$CClr, parameter error detected..."; exit 5
@@ -159,6 +159,9 @@ while [ "$1" != "" ] && [ "$1" != "--" ]; do
     --list-interfaces) FLUXIONListInterfaces=1;;
     --interface) FLUXIONInterface=$2; shift;;
     --skip-dependencies) readonly FLUXIONSkipDependencies=1;;
+    --jammer-interface) FLUXIONJammerInterface=$2; shift;;
+    --ap-interface) FLUXIONAPInterface=$2; shift;;
+    --tracker-interface) FLUXIONTrackerInterface=$2; shift;;
   esac
   shift # Shift new parameters
 done
@@ -1884,17 +1887,22 @@ fluxion_target_set_tracker() {
   if [ "$FluxionTargetTrackerInterface" == "" ]; then
     echo "Running get interface (tracker)." > $FLUXIONOutputDevice
     if [ "$FLUXIONAuto" ]; then
-      # Auto mode: skip tracker interface (optional feature).
-      FluxionTargetTrackerInterface=""
-      return 0
-    fi
-    local -r interfaceQuery=$FLUXIONTargetTrackerInterfaceQuery
-    local -r interfaceQueryTip=$FLUXIONTargetTrackerInterfaceQueryTip
-    local -r interfaceQueryTip2=$FLUXIONTargetTrackerInterfaceQueryTip2
-    if ! fluxion_get_interface attack_tracking_interfaces \
-      "$interfaceQuery\n$FLUXIONVLine $interfaceQueryTip\n$FLUXIONVLine $interfaceQueryTip2"; then
-      echo "Failed to get tracker interface!" > $FLUXIONOutputDevice
-      return 2
+      if [ "$FLUXIONTrackerInterface" ]; then
+        FluxionInterfaceSelected="$FLUXIONTrackerInterface"
+      else
+        # Auto mode: skip tracker unless --tracker-interface is specified.
+        FluxionTargetTrackerInterface=""
+        return 0
+      fi
+    else
+      local -r interfaceQuery=$FLUXIONTargetTrackerInterfaceQuery
+      local -r interfaceQueryTip=$FLUXIONTargetTrackerInterfaceQueryTip
+      local -r interfaceQueryTip2=$FLUXIONTargetTrackerInterfaceQueryTip2
+      if ! fluxion_get_interface attack_tracking_interfaces \
+        "$interfaceQuery\n$FLUXIONVLine $interfaceQueryTip\n$FLUXIONVLine $interfaceQueryTip2"; then
+        echo "Failed to get tracker interface!" > $FLUXIONOutputDevice
+        return 2
+      fi
     fi
     local selectedInterface=$FluxionInterfaceSelected
   else

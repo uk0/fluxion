@@ -59,6 +59,21 @@ fluxion_help(){
                 operations. If not given, the first available wireless
                 interface is used.
 
+         --jammer-interface <iface>
+                Use the specified wireless interface for the deauth jammer
+                (Captive Portal attack). Overrides auto-selection for this
+                role only.
+
+         --ap-interface <iface>
+                Use the specified wireless interface for the rogue access
+                point (Captive Portal attack). Overrides auto-selection for
+                this role only.
+
+         --tracker-interface <iface>
+                Use the specified wireless interface for the target tracker
+                (channel-change detection). In auto mode the tracker is
+                disabled unless this option is given.
+
          -k     Kill interfering wireless processes (NetworkManager, etc.)
                 before allocating interfaces. Implied by --auto.
 

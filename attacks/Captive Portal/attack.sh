@@ -37,7 +37,9 @@ captive_portal_set_jammer_interface() {
 
   if [ ! "$CaptivePortalJammerInterfaceOriginal" ]; then
     echo "Running get jammer interface." > $FLUXIONOutputDevice
-    if ! fluxion_get_interface attack_targetting_interfaces \
+    if [ "$FLUXIONJammerInterface" ]; then
+      FluxionInterfaceSelected="$FLUXIONJammerInterface"
+    elif ! fluxion_get_interface attack_targetting_interfaces \
       "$CaptivePortalJammerInterfaceQuery"; then
       echo "Failed to get jammer interface" > $FLUXIONOutputDevice
       return 1
@@ -91,7 +93,9 @@ captive_portal_set_ap_interface() {
 
   if [ ! "$CaptivePortalAccessPointInterfaceOriginal" ]; then
     echo "Running get ap interface." > $FLUXIONOutputDevice
-    if ! fluxion_get_interface captive_portal_ap_interfaces \
+    if [ "$FLUXIONAPInterface" ]; then
+      FluxionInterfaceSelected="$FLUXIONAPInterface"
+    elif ! fluxion_get_interface captive_portal_ap_interfaces \
       "$CaptivePortalAccessPointInterfaceQuery"; then
       echo "Failed to get ap interface" > $FLUXIONOutputDevice
       return 1
@@ -483,22 +487,10 @@ captive_portal_set_user_interface() {
   captive_portal_unset_user_interface
 
   if [ "$FLUXIONAuto" ]; then
-    # Auto mode: pick first available generic portal or site.
-    if [ -d "$attackPath/generic/languages" ]; then
-      local firstLang
-      firstLang=$(ls -1 "$attackPath/generic/languages/" 2>/dev/null | head -1)
-      if [ "$firstLang" ]; then
-        CaptivePortalUserInterface="${firstLang%.lang}"
-        return 0
-      fi
-    fi
-    if [ -d "$attackPath/sites" ]; then
-      local firstSite
-      firstSite=$(ls -1 "$attackPath/sites/" 2>/dev/null | head -1)
-      if [ "$firstSite" ]; then
-        CaptivePortalUserInterface="${firstSite%.portal}"
-        return 0
-      fi
+    # Auto mode: use generic English portal.
+    if [ -f "$attackPath/generic/languages/English.lang" ]; then
+      CaptivePortalUserInterface="English"
+      return 0
     fi
     return 1
   fi
