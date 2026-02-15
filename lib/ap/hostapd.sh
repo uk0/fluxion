@@ -88,15 +88,14 @@ channel=$APServiceChannel" \
 function ap_service_start() {
   ap_service_stop
 
-  xterm $FLUXIONHoldXterm $TOP -bg "#000000" -fg "#FFFFFF" \
-    -title "FLUXION AP Service [hostapd]" -e \
-    hostapd "$APServiceConfigDirectory/$APServiceMAC-hostapd.conf" &
-  APServiceXtermPID=$!
+  fluxion_window_open APServiceXtermPID \
+    "FLUXION AP Service [hostapd]" "$TOP" "#000000" "#FFFFFF" \
+    "hostapd \"$APServiceConfigDirectory/$APServiceMAC-hostapd.conf\""
 
   # Wait till hostapd has started and its virtual interface is ready.
   while [ ! "$APServicePID" ]; do
     sleep 1
-    APServicePID=$(pgrep -P $APServiceXtermPID)
+    APServicePID=$(pgrep -P $APServiceXtermPID 2>/dev/null)
   done
 
   ap_service_route

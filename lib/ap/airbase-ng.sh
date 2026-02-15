@@ -75,16 +75,14 @@ function ap_service_prep() {
 function ap_service_start() {
   ap_service_stop
 
-  xterm $FLUXIONHoldXterm $TOP -bg "#000000" -fg "#FFFFFF" \
-    -title "FLUXION AP Service [airbase-ng]" -e \
-    airbase-ng -y -e $APServiceSSID -c $APServiceChannel \
-      -a $APServiceMAC $APServiceInterface &
-  APServiceXtermPID=$!
+  fluxion_window_open APServiceXtermPID \
+    "FLUXION AP Service [airbase-ng]" "$TOP" "#000000" "#FFFFFF" \
+    "airbase-ng -y -e $APServiceSSID -c $APServiceChannel -a $APServiceMAC $APServiceInterface"
 
   # Wait till airebase-ng starts and creates the extra virtual interface.
   while [ ! "$APServicePID" ]; do
     sleep 1
-    APServicePID=$(pgrep -P $APServiceXtermPID)
+    APServicePID=$(pgrep -P $APServiceXtermPID 2>/dev/null)
   done
   eval ifconfig at0 192.169.254.1
   ap_service_route

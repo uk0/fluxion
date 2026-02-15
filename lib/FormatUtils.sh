@@ -7,7 +7,7 @@ FormatTabLength=8
 FormatValidSpecifiers='%([+-]?([0-9]+|\*)?(\.([0-9]+|\*))?)?[bqdiouxXfeEgGcsnaA]'
 
 # This should be relocated (here temporarily)
-tabs -$FormatTabLength # Set tab width to var
+tabs -$FormatTabLength &>/dev/null # Set tab width to var
 
 # This function strips (some) invisible characters.
 # It only strips those needed by fluxion, currently.

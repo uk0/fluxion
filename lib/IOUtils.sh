@@ -125,7 +125,7 @@ io_query_choice() {
   fi
 
   __io_query_choice__query=$([ -z "$1" ] && echo -n "" || echo -ne "$FLUXIONVLine $1\n")
-  io_query_format_fields "$__io_query_choice__query" "\t$CRed[$CSYel%d$CClr$CRed]$CClr %b\n" $2
+  io_query_format_fields "$__io_query_choice__query" "\t$CRed[$CSYel%d$CClr$CRed]$CClr %b$CClr\n" $2
 
   IOQueryChoice="${IOQueryFormatFields[0]}"
 }
