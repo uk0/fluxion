@@ -44,7 +44,7 @@ if [ $EUID -ne 0 ]; then # Super User Check
 fi
 
 # Save original args for tmux re-exec.
-readonly FLUXIONOriginalArgs="$*"
+readonly FLUXIONOriginalArgs=$(printf '%q ' "$@")
 
 # Pre-parse flags that must bypass X11 checks.
 FLUXIONPreParseTMux=""
@@ -1095,7 +1095,7 @@ fluxion_allocate_interface() { # Reserve interfaces
       # TODO: Make the loop below airmon-ng independent.
       # Maybe replace it with a list of network-managers?
       # WARNING: Version differences could break code below.
-      for program in "$(airmon-ng check | awk 'NR>6{print $2}')"; do
+      for program in "$(timeout 5 airmon-ng check 2>/dev/null | awk 'NR>6{print $2}')"; do
         killall "$program" &> $FLUXIONOutputDevice
       done
     fi
@@ -1215,13 +1215,24 @@ fluxion_get_interface() {
     local -r interfaceQuery=$FLUXIONInterfaceQuery
   fi
 
-  # Auto mode: select first available interface.
+  # Auto mode: select first available interface (or --interface if specified).
   if [ "$FLUXIONAuto" ]; then
+    # Use --interface hint only if it isn't already allocated.
+    if [ "$FLUXIONInterface" ] && interface_is_wireless "$FLUXIONInterface" \
+      && [ -z "${FluxionInterfaces[$FLUXIONInterface]+x}" ]; then
+      FluxionInterfaceSelected="$FLUXIONInterface"
+      interface_chipset "$FLUXIONInterface" 2>/dev/null
+      FluxionInterfaceSelectedInfo="${InterfaceChipset:-}"
+      FluxionInterfaceSelectedState="[+]"
+      return 0
+    fi
     local autoInterfaces
     readarray -t autoInterfaces < <($1)
     local autoIface
     for autoIface in "${autoInterfaces[@]}"; do
-      if [ "$autoIface" ]; then
+      # Skip interfaces already in use (allocated or renamed).
+      if [ "$autoIface" ] \
+        && [ -z "${FluxionInterfaces[$autoIface]+x}" ]; then
         FluxionInterfaceSelected="$autoIface"
         interface_chipset "$autoIface" 2>/dev/null
         FluxionInterfaceSelectedInfo="${InterfaceChipset:-}"
