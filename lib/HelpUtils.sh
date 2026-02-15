@@ -10,7 +10,7 @@ fluxion_help(){
          research tool
 
   SYNOPSIS
-         fluxion [-debug] [-l language ] attack ...
+         fluxion [-debug] [-l language ] [-m] [--auto] [--scan-time N] attack ...
 
   DESCRIPTION
          fluxion is a security auditing and  social-engineering  research  tool.
@@ -26,34 +26,83 @@ fluxion_help(){
 
          --help Print help page and exit with 0.
 
-         -m     Run fluxion in manual mode instead of auto mode.
+         -m     Use tmux multiplexer instead of xterm. Enables headless
+                operation without an X11/graphical session. If not already
+                inside a tmux session, fluxion will re-exec itself inside
+                one. All sub-windows are opened as tmux windows instead of
+                xterm terminals.
 
-         -k     Kill wireless connection if it is connected.
+         --auto Run fluxion in fully non-interactive auto mode. Every
+                interactive prompt auto-selects a sensible default. Implies
+                --killer (-k). In auto mode, fluxion runs one attack cycle
+                and exits (no looping). Best combined with -m for headless
+                operation.
+
+         --scan-time <seconds>
+                Duration in seconds for the wireless scanner in auto mode.
+                Default is 30. After this time, the scanner is killed and
+                results are processed. Only meaningful with --auto or
+                --scan-only.
+
+         --scan-only
+                Scan for nearby WPA networks, print results to stdout, and
+                exit. Does not launch any attack. Implies --auto and -k.
+                Use with --scan-time to control scan duration and -c to
+                restrict channels. Output is a machine-friendly table.
+
+         --list-interfaces
+                List all detected wireless network interfaces with their
+                driver, chipset, bus type, and state, then exit.
+
+         --interface <iface>
+                Use the specified wireless interface for scanning and
+                operations. If not given, the first available wireless
+                interface is used.
+
+         --jammer-interface <iface>
+                Use the specified wireless interface for the deauth jammer
+                (Captive Portal attack). Overrides auto-selection for this
+                role only.
+
+         --ap-interface <iface>
+                Use the specified wireless interface for the rogue access
+                point (Captive Portal attack). Overrides auto-selection for
+                this role only.
+
+         --tracker-interface <iface>
+                Use the specified wireless interface for the target tracker
+                (channel-change detection). In auto mode the tracker is
+                disabled unless this option is given.
+
+         -k     Kill interfering wireless processes (NetworkManager, etc.)
+                before allocating interfaces. Implied by --auto.
 
          -d     Run fluxion in debug mode.
-
-         -x     Try to run fluxion with xterm terminals instead of tmux.
 
          -r     Reload driver.
 
          -l <language>
-                Define a certain language.
+                Define a certain language. In auto mode, defaults to \"en\".
 
          -e <essid>
-                Select the target network based on the ESSID.
+                Select the target network based on the ESSID. In auto mode,
+                used to filter scan results to the matching network.
 
          -c <channel>
-                Indicate the channel(s) to listen to.
+                Indicate the channel(s) to listen to. In auto mode, the
+                scanner is restricted to these channels.
 
          -a <attack>
-                Define a certain attack.
+                Define a certain attack. In auto mode, this selects the
+                attack type without prompting.
 
          --ratio <ratio>
                 Define the windows size. Bigger ratio ->  smaller  window  size.
-                Default is 4.
+                Default is 4. Only applies in xterm mode.
 
          -b <bssid>
                 Select the target network based on the access point MAC address.
+                In auto mode, used to filter scan results.
 
          -j <jamming interface>
                 Define a certain jamming interface.
@@ -61,10 +110,23 @@ fluxion_help(){
          -a <access point interface>
                 Define a certain access point interface.
 
+  EXAMPLES
+         # List all nearby WPA networks (60-second scan):
+         sudo ./fluxion.sh -m --scan-only --scan-time 60
+
+         # List networks on channel 6 only:
+         sudo ./fluxion.sh -m --scan-only --scan-time 30 -c 6
+
+         # Headless, non-interactive, 15-second scan:
+         sudo ./fluxion.sh -m --auto -l en --scan-time 15
+
+         # Headless with specific target:
+         sudo ./fluxion.sh -m --auto -b AA:BB:CC:DD:EE:FF -c 6
+
   FILES
          /tmp/fluxspace/
                 The system wide tmp directory.
-         $FLUXION/attacks/
+         \$FLUXION/attacks/
                 Folder where handshakes and passwords are stored in.
 
   ENVIRONMENT

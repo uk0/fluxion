@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Fluxion cleanup script — kills any lingering state from a forced termination.
+# Run as root from anywhere: sudo bash /path/to/fluxion/scripts/cleanup.sh
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "cleanup.sh must be run as root." >&2
+	exit 1
+fi
+
+echo "[*] Killing fluxion processes..."
+pkill -SIGINT -f "fluxion.sh" 2>/dev/null
+sleep 2
+pkill -9 -f "fluxion.sh" 2>/dev/null
+
+echo "[*] Killing attack service processes..."
+for proc in hostapd dnsmasq lighttpd dhcpd php-cgi airodump-ng aireplay-ng mdk4 airbase-ng; do
+	pkill -9 "$proc" 2>/dev/null && echo "    killed $proc"
+done
+
+echo "[*] Killing FLUXION tmux sessions..."
+for session in $(tmux ls 2>/dev/null | grep -oE '^FLUXION[^:]*'); do
+	tmux kill-session -t "$session" 2>/dev/null && echo "    killed tmux session $session"
+done
+
+echo "[*] Restoring wireless interfaces..."
+for iface in $(ip link show | grep -oE 'fluxwl[^ :@]+'); do
+	# Derive original name from MAC: wlx + mac without colons
+	mac=$(ip link show "$iface" 2>/dev/null | awk '/link\//{print $2}')
+	original="wlx${mac//:/}"
+
+	ip link set "$iface" down 2>/dev/null
+	iw dev "$iface" set type managed 2>/dev/null
+	ip link set "$iface" name "$original" 2>/dev/null \
+		&& echo "    $iface -> $original (managed)" \
+		|| echo "    $iface -> rename failed, left as-is"
+	ip link set "$original" up 2>/dev/null
+done
+
+echo "[*] Cleaning up workspace..."
+rm -rf /tmp/fluxspace/ 2>/dev/null && echo "    /tmp/fluxspace/ removed"
+
+echo "[*] Restoring iptables..."
+if [ -f /tmp/iptables-fluxion.bak ]; then
+	iptables-restore < /tmp/iptables-fluxion.bak \
+		&& echo "    iptables restored from backup" \
+		&& rm -f /tmp/iptables-fluxion.bak
+else
+	echo "    no iptables backup found, flushing rules"
+	iptables -F
+	iptables -X
+	iptables -t nat -F
+	iptables -t nat -X
+fi
+
+echo "[+] Done."
