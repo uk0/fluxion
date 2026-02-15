@@ -36,14 +36,26 @@ for iface in $(ip link show | grep -oE 'fluxwl[^ :@]+'); do
 	ip link set "$original" up 2>/dev/null
 done
 
+echo "[*] Restoring ip_forward..."
+if [ -f /tmp/fluxspace/ip_forward ]; then
+	sysctl -w net.ipv4.ip_forward=$(cat /tmp/fluxspace/ip_forward) 2>/dev/null \
+		&& echo "    ip_forward restored from saved value"
+else
+	sysctl -w net.ipv4.ip_forward=0 2>/dev/null \
+		&& echo "    ip_forward reset to 0 (no saved value)"
+fi
+
 echo "[*] Cleaning up workspace..."
 rm -rf /tmp/fluxspace/ 2>/dev/null && echo "    /tmp/fluxspace/ removed"
 
 echo "[*] Restoring iptables..."
-if [ -f /tmp/iptables-fluxion.bak ]; then
-	iptables-restore < /tmp/iptables-fluxion.bak \
+# Fluxion saves iptables backup at <fluxion_dir>/iptables-rules
+_script_dir="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
+_iptables_bak="$_script_dir/iptables-rules"
+if [ -f "$_iptables_bak" ]; then
+	iptables-restore < "$_iptables_bak" \
 		&& echo "    iptables restored from backup" \
-		&& rm -f /tmp/iptables-fluxion.bak
+		&& rm -f "$_iptables_bak"
 else
 	echo "    no iptables backup found, flushing rules"
 	iptables -F
