@@ -290,13 +290,24 @@ handshake_snooper_set_jammer_interface() {
 
   local selectedInterface=$HandshakeSnooperJammerInterfaceOriginal
 
+  # If the user picked a fluxwl* name from the interface list (already renamed by
+  # the scanner), use it directly — fluxion_allocate_interface would try to rename
+  # it again, and FluxionInterfaces[$fluxwl*] returns the original hw name (reverse
+  # mapping), which no longer exists as an interface name.
+  if [[ "$selectedInterface" == fluxwl* ]]; then
+    HandshakeSnooperJammerInterface="$selectedInterface"
+    local hwName="${FluxionInterfaces[$selectedInterface]}"
+    [ -n "$hwName" ] && HandshakeSnooperJammerInterfaceOriginal="$hwName"
+    return 0
+  fi
+
   if ! fluxion_allocate_interface $selectedInterface; then
     echo "Failed to allocate jammer interface" > $FLUXIONOutputDevice
     return 2
   fi
 
   echo "Succeeded get jammer interface." > $FLUXIONOutputDevice
-  
+
   # Use the renamed monitor interface (e.g. fluxwl0), not the original name.
   local jammerIface=${FluxionInterfaces[$selectedInterface]:-$selectedInterface}
 
