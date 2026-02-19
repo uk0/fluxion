@@ -25,6 +25,15 @@ function ap_service_stop() {
 function ap_service_reset() {
   ap_service_stop
 
+  # Restore original regulatory domain if we changed it.
+  if [ "$APServiceOrigRegDomain" ]; then
+    local __iw=$(command -v iw 2>/dev/null || echo /usr/sbin/iw)
+    if [ -x "$__iw" ]; then
+      "$__iw" reg set "$APServiceOrigRegDomain" 2>/dev/null
+    fi
+    APServiceOrigRegDomain=""
+  fi
+
   # Reset MAC address to original.
   if [ "$APServiceInterface" ]; then
     ip link set "$APServiceInterface" down 2>/dev/null
@@ -62,12 +71,34 @@ function ap_service_prep() {
   
   ap_service_stop
 
+  # For 5GHz channels, set a permissive regulatory domain to allow
+  # transmission (many adapters default to country 00 which marks
+  # all 5GHz as no-IR/passive-scan only).
+  if [ "$APServiceChannel" -gt 14 ] 2>/dev/null; then
+    local __iw=$(command -v iw 2>/dev/null || echo /usr/sbin/iw)
+    if [ -x "$__iw" ]; then
+      APServiceOrigRegDomain=$("$__iw" reg get 2>/dev/null | grep -m1 "^country" | sed 's/country \([A-Z0-9]*\).*/\1/')
+      "$__iw" reg set BO 2>/dev/null
+      sleep 0.5
+    fi
+  fi
+
   # Prepare the hostapd config file.
+  local __hwMode="g"
+  local __extraConf=""
+  if [ "$APServiceChannel" -gt 14 ] 2>/dev/null; then
+    __hwMode="a"
+    __extraConf="country_code=BO
+ieee80211d=1"
+  fi
+
   echo "\
 interface=$APServiceInterface
 driver=nl80211
 ssid=$APServiceSSID
-channel=$APServiceChannel" \
+channel=$APServiceChannel
+hw_mode=$__hwMode
+$__extraConf" \
   > "$APServiceConfigDirectory/$APServiceMAC-hostapd.conf"
 
   # Spoof virtual interface MAC address.

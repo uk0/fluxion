@@ -52,7 +52,7 @@ fluxion_help(){
 
          --list-interfaces
                 List all detected wireless network interfaces with their
-                driver, chipset, bus type, and state, then exit.
+                supported bands, driver, chipset, bus type, and state, then exit.
 
          --interface <iface>
                 Use the specified wireless interface for scanning and
@@ -73,6 +73,18 @@ fluxion_help(){
                 Use the specified wireless interface for the target tracker
                 (channel-change detection). In auto mode the tracker is
                 disabled unless this option is given.
+
+         --ap-service <hostapd|airbase-ng>
+                Override the rogue AP service. Default is hostapd.
+                On DFS channels (52-64, 100-144) auto mode selects
+                airbase-ng automatically since hostapd requires driver
+                radar/CAC support that USB adapters lack.
+
+         --timeout <minutes>
+                Maximum duration in minutes for the attack in auto mode.
+                After this time the attack is stopped and fluxion exits.
+                Default is no timeout (runs indefinitely until the attack
+                succeeds or is interrupted).
 
          -k     Kill interfering wireless processes (NetworkManager, etc.)
                 before allocating interfaces. Implied by --auto.
