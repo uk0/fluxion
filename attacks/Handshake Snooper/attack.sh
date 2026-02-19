@@ -476,9 +476,21 @@ attack_targetting_interfaces() {
 }
 
 attack_tracking_interfaces() {
+  # Determine required band from target channel.
+  local __requiredBand=""
+  if [ "$FluxionTargetChannel" ]; then
+    local __ch=$(echo "$FluxionTargetChannel" | grep -oE '[0-9]+' | head -1)
+    if [ -n "$__ch" ] && [ "$__ch" -gt 14 ]; then
+      __requiredBand="5GHz"
+    fi
+  fi
   interface_list_wireless
   local interface
   for interface in "${InterfaceListWireless[@]}"; do
+    if [ "$__requiredBand" ]; then
+      interface_bands "$interface" 2>/dev/null
+      if [[ "${InterfaceBands:-}" != *"$__requiredBand"* ]]; then continue; fi
+    fi
     echo "$interface"
   done
   echo "" # This enables the Skip option.

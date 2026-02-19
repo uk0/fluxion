@@ -17,8 +17,8 @@ if ! declare -p InstallerUtilsInstalledPackagesFile >/dev/null 2>&1; then
 fi
 
 # Ensure install-tracking file exists so we can later uninstall only what we added.
-mkdir -p "${InstallerUtilsInstalledPackagesFile%/*}"
-touch "$InstallerUtilsInstalledPackagesFile"
+mkdir -p "${InstallerUtilsInstalledPackagesFile%/*}" 2>/dev/null
+touch "$InstallerUtilsInstalledPackagesFile" 2>/dev/null
 
 # Detect whether a package is already installed for supported package managers.
 installer_utils_package_installed() {

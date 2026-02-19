@@ -22,7 +22,7 @@ readonly FLUXIONNoiseFloor=-90
 readonly FLUXIONNoiseCeiling=-60
 
 readonly FLUXIONVersion=6
-readonly FLUXIONRevision=20
+readonly FLUXIONRevision=21
 
 # Declare window ration bigger = smaller windows
 FLUXIONWindowRatio=4
@@ -39,14 +39,7 @@ FLUXIONEnable5GHZ=0
 # ============================================================ #
 # ================= < Script Sanity Checks > ================= #
 # ============================================================ #
-if [ $EUID -ne 0 ]; then # Super User Check
-  echo -e "\\033[31mAborted, please execute the script as root.\\033[0m"; exit 1
-fi
-
-# Save original args for tmux re-exec.
-readonly FLUXIONOriginalArgs=$(printf '%q ' "$@")
-
-# Pre-parse flags that must bypass X11 checks.
+# Pre-parse flags that must run before root/X11 checks.
 FLUXIONPreParseTMux=""
 FLUXIONPreParseScanOnly=""
 FLUXIONPreParseListIfaces=""
@@ -59,6 +52,13 @@ for arg in "$@"; do
     -h|--help|-v|--version) FLUXIONPreParseHelp=1;;
   esac
 done
+
+if [ $EUID -ne 0 ] && [ ! "$FLUXIONPreParseHelp" ]; then
+  echo -e "\\033[31mAborted, please execute the script as root.\\033[0m"; exit 1
+fi
+
+# Save original args for tmux re-exec.
+readonly FLUXIONOriginalArgs=$(printf '%q ' "$@")
 
 # ===================== < Display Checks > ===================== #
 if [ "$FLUXIONPreParseScanOnly" ] || [ "$FLUXIONPreParseListIfaces" ] || [ "$FLUXIONPreParseHelp" ]; then
@@ -112,7 +112,7 @@ source "$FLUXIONLibPath/WindowUtils.sh"
 # ============================================================ #
 if ! FLUXIONCLIArguments=$(
     getopt --options="vdk5rinmthb:e:c:l:a:r" \
-      --longoptions="debug,debug-log:,version,killer,5ghz,installer,reloader,help,airmon-ng,multiplexer,target,test,auto,bssid:,essid:,channel:,language:,attack:,ratio,skip-dependencies,scan-time:,scan-only,list-interfaces,interface:,jammer-interface:,ap-interface:,tracker-interface:" \
+      --longoptions="debug,debug-log:,version,killer,5ghz,installer,reloader,help,airmon-ng,multiplexer,target,test,auto,bssid:,essid:,channel:,language:,attack:,ratio,skip-dependencies,scan-time:,scan-only,list-interfaces,interface:,jammer-interface:,ap-interface:,tracker-interface:,ap-service:,timeout:" \
       --name="FLUXION V$FLUXIONVersion.$FLUXIONRevision" -- "$@"
   ); then
   echo -e "${CRed}Aborted$CClr, parameter error detected..."; exit 5
@@ -162,6 +162,8 @@ while [ "$1" != "" ] && [ "$1" != "--" ]; do
     --jammer-interface) FLUXIONJammerInterface=$2; shift;;
     --ap-interface) FLUXIONAPInterface=$2; shift;;
     --tracker-interface) FLUXIONTrackerInterface=$2; shift;;
+    --ap-service) FLUXIONAPService=$2; shift;;
+    --timeout) FLUXIONTimeout=$2; shift;;
   esac
   shift # Shift new parameters
 done
@@ -1242,7 +1244,10 @@ fluxion_get_interface() {
       && [ -z "${FluxionInterfaces[$FLUXIONInterface]+x}" ]; then
       FluxionInterfaceSelected="$FLUXIONInterface"
       interface_chipset "$FLUXIONInterface" 2>/dev/null
-      FluxionInterfaceSelectedInfo="${InterfaceChipset:-}"
+      interface_bands "$FLUXIONInterface" 2>/dev/null
+      local __autoBandTag=""
+      if [ "$InterfaceBands" ] && [ "$InterfaceBands" != "unknown" ]; then __autoBandTag="[$InterfaceBands] "; fi
+      FluxionInterfaceSelectedInfo="${__autoBandTag}${InterfaceChipset:-}"
       FluxionInterfaceSelectedState="[+]"
       return 0
     fi
@@ -1255,7 +1260,10 @@ fluxion_get_interface() {
         && [ -z "${FluxionInterfaces[$autoIface]+x}" ]; then
         FluxionInterfaceSelected="$autoIface"
         interface_chipset "$autoIface" 2>/dev/null
-        FluxionInterfaceSelectedInfo="${InterfaceChipset:-}"
+        interface_bands "$autoIface" 2>/dev/null
+        local __autoBandTag2=""
+        if [ "$InterfaceBands" ] && [ "$InterfaceBands" != "unknown" ]; then __autoBandTag2="[$InterfaceBands] "; fi
+        FluxionInterfaceSelectedInfo="${__autoBandTag2}${InterfaceChipset:-}"
         FluxionInterfaceSelectedState="[+]"
         return 0
       fi
@@ -1269,6 +1277,8 @@ fluxion_get_interface() {
     readarray -t candidateInterfaces < <($1)
     local interfacesAvailable=()
     local interfacesAvailableInfo=()
+    local interfacesAvailableBands=()
+    local interfacesAvailableBus=()
     local interfacesAvailableColor=()
     local interfacesAvailableState=()
 
@@ -1281,6 +1291,17 @@ fluxion_get_interface() {
       fi
 
       interface_chipset "$candidateInterface"
+      interface_bands "$candidateInterface" 2>/dev/null
+      if [ "$InterfaceBands" ] && [ "$InterfaceBands" != "unknown" ]; then
+        interfacesAvailableBands+=("[$InterfaceBands]")
+      else
+        interfacesAvailableBands+=("")
+      fi
+      if [ "$InterfaceHardwareBus" ]; then
+        interfacesAvailableBus+=("[$InterfaceHardwareBus]")
+      else
+        interfacesAvailableBus+=("")
+      fi
       interfacesAvailableInfo+=("$InterfaceChipset")
 
       # If it has already been allocated, we can use it at will.
@@ -1318,6 +1339,8 @@ fluxion_get_interface() {
       if [ $skipOption ]; then
         interfacesAvailable+=("$FLUXIONGeneralSkipOption")
         interfacesAvailableColor+=("$CClr")
+        interfacesAvailableBands+=("")
+        interfacesAvailableBus+=("")
       fi
 
       interfacesAvailable+=(
@@ -1330,13 +1353,35 @@ fluxion_get_interface() {
         "$CClr"
       )
 
+      interfacesAvailableBands+=("" "")
+      interfacesAvailableBus+=("" "")
+
+      local __ifaceMaxLen=8
+      local __ifaceEntry
+      for __ifaceEntry in "${interfacesAvailable[@]}"; do
+        [ ${#__ifaceEntry} -gt $__ifaceMaxLen ] && __ifaceMaxLen=${#__ifaceEntry}
+      done
+
+      local __bandMaxLen=0
+      local __bandEntry
+      for __bandEntry in "${interfacesAvailableBands[@]}"; do
+        [ ${#__bandEntry} -gt $__bandMaxLen ] && __bandMaxLen=${#__bandEntry}
+      done
+
+      local __busMaxLen=0
+      local __busEntry
+      for __busEntry in "${interfacesAvailableBus[@]}"; do
+        [ ${#__busEntry} -gt $__busMaxLen ] && __busMaxLen=${#__busEntry}
+      done
+
       format_apply_autosize \
-        "$CRed[$CSYel%1d$CClr$CRed]%b %-8b %3s$CClr %-*.*s\n"
+        "$CRed[$CSYel%1d$CClr$CRed]%b %-${__ifaceMaxLen}b %3s %-${__bandMaxLen}s %-${__busMaxLen}s$CClr %-*.*s\n"
 
       io_query_format_fields \
         "$FLUXIONVLine $interfaceQuery" "$FormatApplyAutosize" \
         interfacesAvailableColor[@] interfacesAvailable[@] \
-        interfacesAvailableState[@] interfacesAvailableInfo[@]
+        interfacesAvailableState[@] interfacesAvailableBands[@] \
+        interfacesAvailableBus[@] interfacesAvailableInfo[@]
 
       echo
 
@@ -1351,7 +1396,7 @@ fluxion_get_interface() {
         *)
           FluxionInterfaceSelected="${IOQueryFormatFields[1]}"
           FluxionInterfaceSelectedState="${IOQueryFormatFields[2]}"
-          FluxionInterfaceSelectedInfo="${IOQueryFormatFields[3]}"
+          FluxionInterfaceSelectedInfo="${IOQueryFormatFields[5]}"
           break;;
       esac
     fi
@@ -1463,12 +1508,26 @@ fluxion_get_target() {
       fluxion_target_get_candidates $interface "" "bg"
     fi
   else
-    local choices=( \
-      "$FLUXIONScannerChannelOptionAll (2.4GHz)" \
-      "$FLUXIONScannerChannelOptionAll (5GHz)" \
-      "$FLUXIONScannerChannelOptionAll (2.4GHz & 5Ghz)" \
-      "$FLUXIONScannerChannelOptionSpecific" "$FLUXIONGeneralBackOption"
-    )
+    interface_bands "$interface" 2>/dev/null
+    local __ifBands="${InterfaceBands:-unknown}"
+    local choices=()
+    if [[ "$__ifBands" == *"2.4GHz"* ]]; then
+      choices+=("$FLUXIONScannerChannelOptionAll (2.4GHz)")
+    fi
+    if [[ "$__ifBands" == *"5GHz"* ]]; then
+      choices+=("$FLUXIONScannerChannelOptionAll (5GHz)")
+    fi
+    if [[ "$__ifBands" == *"2.4GHz"* ]] && [[ "$__ifBands" == *"5GHz"* ]]; then
+      choices+=("$FLUXIONScannerChannelOptionAll (2.4GHz & 5Ghz)")
+    fi
+    if [ ${#choices[@]} -eq 0 ]; then
+      choices+=( \
+        "$FLUXIONScannerChannelOptionAll (2.4GHz)" \
+        "$FLUXIONScannerChannelOptionAll (5GHz)" \
+        "$FLUXIONScannerChannelOptionAll (2.4GHz & 5Ghz)" \
+      )
+    fi
+    choices+=("$FLUXIONScannerChannelOptionSpecific" "$FLUXIONGeneralBackOption")
 
     io_query_choice "$FLUXIONScannerChannelQuery" choices[@]
 
@@ -1618,7 +1677,13 @@ fluxion_get_target() {
       echo "${FluxionTargetCandidatesClients[@]}" |
       grep -c "${candidatesMAC[i]}"
     )
-    candidatesChannel[i]=$(echo "$candidateAPInfo" | cut -d , -f 4)
+    local __ch=$(echo "$candidateAPInfo" | cut -d , -f 4 | tr -d ' ')
+    if [ "$__ch" -ge 52 -a "$__ch" -le 64 ] 2>/dev/null || \
+       [ "$__ch" -ge 100 -a "$__ch" -le 144 ] 2>/dev/null; then
+      candidatesChannel[i]="${__ch}!"
+    else
+      candidatesChannel[i]="$__ch"
+    fi
     candidatesSecurity[i]=$(echo "$candidateAPInfo" | cut -d , -f 6)
     candidatesPower[i]=$(echo "$candidateAPInfo" | cut -d , -f 9)
     candidatesColor[i]=$(
@@ -1680,13 +1745,34 @@ fluxion_get_target() {
     headerTitle+="${CYel}Note: $filteredCount network(s) with existing handshakes were filtered$CClr\n\n"
   fi
 
-  format_apply_autosize "$CRed[$CSYel ** $CClr$CRed]$CClr %2s %-*.*s %4s %3s %3s %2s %-8.8s %17s %-30.30s\n"
+  # Add DFS legend if any candidate is on a DFS channel
+  local __hasDFS=""
+  local __chk
+  for __chk in "${candidatesChannel[@]}"; do
+    if [[ "$__chk" == *"!" ]]; then __hasDFS=1; break; fi
+  done
+  if [ "$__hasDFS" ]; then
+    headerTitle+="${CYel}! = DFS channel (rogue AP may require a non-DFS fallback)$CClr\n\n"
+  fi
+
+  local __essidMaxLen=5
+  local __essidEntry
+  for __essidEntry in "${candidatesESSID[@]}"; do
+    [ ${#__essidEntry} -gt $__essidMaxLen ] && __essidMaxLen=${#__essidEntry}
+  done
+  local __vendorMaxLen=6
+  local __vendorEntry
+  for __vendorEntry in "${candidatesVendor[@]}"; do
+    [ ${#__vendorEntry} -gt $__vendorMaxLen ] && __vendorMaxLen=${#__vendorEntry}
+  done
+
   local -r headerFields=$(
-    printf "$FormatApplyAutosize" \
+    printf "$CRed[$CSYel ** $CClr$CRed]$CClr %2s %-${__essidMaxLen}s %4s %3s %3s %4s %-8s %-17s %-${__vendorMaxLen}s\n" \
       "HS" "ESSID" "QLTY" "PWR" "STA" "CH" "SECURITY" "BSSID" "VENDOR"
   )
 
-  format_apply_autosize "$CRed[$CSYel%03d$CClr$CRed]%b %2s %-*.*s %3s%% %3s %3d %2s %-8.8s %17s %-30.30s\n"
+  local -r __dataFormat="$CRed[$CSYel%03d$CClr$CRed]%b  %2s %-${__essidMaxLen}.${__essidMaxLen}s %3s%% %3s %3d %4s %-8.8s %-17s %-${__vendorMaxLen}.${__vendorMaxLen}s\n"
+  FormatApplyAutosize="$__dataFormat"
 
   if [ "$FLUXIONAuto" ]; then
     # Auto mode: select target matching -b/-e flags, or first available.
@@ -1707,7 +1793,7 @@ fluxion_get_target() {
 
     FluxionTargetMAC=${candidatesMAC[$autoTargetIndex]}
     FluxionTargetSSID=${candidatesESSID[$autoTargetIndex]}
-    FluxionTargetChannel=${candidatesChannel[$autoTargetIndex]}
+    FluxionTargetChannel=${candidatesChannel[$autoTargetIndex]//!/}
   else
     io_query_format_fields "$headerTitle$headerFields" \
      "$FormatApplyAutosize" \
@@ -1726,7 +1812,7 @@ fluxion_get_target() {
 
     FluxionTargetMAC=${IOQueryFormatFields[8]}
     FluxionTargetSSID=${IOQueryFormatFields[2]}
-    FluxionTargetChannel=${IOQueryFormatFields[6]}
+    FluxionTargetChannel=${IOQueryFormatFields[6]//!/}
   fi
 
   if [ "$FLUXIONAuto" ]; then
@@ -2476,8 +2562,11 @@ fluxion_run_attack() {
     # clears HandshakeSnooperArbiterPID, so we need our own copy to track it.
     local autoArbiterPID="$HandshakeSnooperArbiterPID"
     local autoTimeout=0
-    local autoMaxWait=3600  # Max 1 hour
-    while [ $autoTimeout -lt $autoMaxWait ]; do
+    local autoMaxWait=0  # 0 = infinite (no timeout)
+    if [ "$FLUXIONTimeout" ]; then
+      autoMaxWait=$((FLUXIONTimeout * 60))
+    fi
+    while [ $autoMaxWait -eq 0 ] || [ $autoTimeout -lt $autoMaxWait ]; do
       # Check if attack finished (captive portal writes status.txt on success)
       if [ -f "$FLUXIONWorkspacePath/status.txt" ]; then
         echo "Auto mode: attack completed (status file found)." > $FLUXIONOutputDevice
@@ -2499,8 +2588,8 @@ fluxion_run_attack() {
       autoTimeout=$((autoTimeout + 5))
     done
 
-    if [ $autoTimeout -ge $autoMaxWait ]; then
-      echo "Auto mode: timeout reached, stopping attack." > $FLUXIONOutputDevice
+    if [ $autoMaxWait -gt 0 ] && [ $autoTimeout -ge $autoMaxWait ]; then
+      echo "Auto mode: timeout reached (${FLUXIONTimeout}m), stopping attack." > $FLUXIONOutputDevice
     fi
   else
     local choices=( \
@@ -2551,18 +2640,10 @@ fluxion_run_attack() {
   fluxion_target_tracker_stop
 
 
-  # could execute twice
-  # but mostly doesn't matter
-  if [ ! -x "$(command -v systemctl)" ]; then
-    if [ "$(systemctl list-units | grep systemd-resolved)" != "" ];then
-        systemctl restart systemd-resolved.service
-    fi
-  fi
-
-  if [ -x "$(command -v service)" ];then
-    if service --status-all | grep -Fq 'systemd-resolved'; then
-      sudo service systemd-resolved.service restart
-    fi
+  # Restore systemd-resolved DNS after the attack intercepted DNS traffic.
+  # Run in background with a timeout so it never blocks the exit path.
+  if command -v systemctl &>/dev/null; then
+    timeout 5 systemctl try-restart systemd-resolved.service &>/dev/null &
   fi
 
   stop_attack
@@ -2595,14 +2676,16 @@ if [ "$FLUXIONListInterfaces" ]; then
     echo "No wireless interfaces detected."
     exit 1
   fi
-  printf "%-16s %-8s %-8s %-12s %s\n" "INTERFACE" "STATE" "BUS" "DRIVER" "CHIPSET"
+  printf "%-16s %-8s %-16s %-8s %-12s %s\n" "INTERFACE" "STATE" "BANDS" "BUS" "DRIVER" "CHIPSET"
   for iface in "${InterfaceListWireless[@]}"; do
     interface_chipset "$iface" 2>/dev/null
     interface_driver "$iface" 2>/dev/null
     interface_state "$iface" 2>/dev/null
-    printf "%-16s %-8s %-8s %-12s %s\n" \
+    interface_bands "$iface" 2>/dev/null
+    printf "%-16s %-8s %-16s %-8s %-12s %s\n" \
       "$iface" \
       "${InterfaceState:-unknown}" \
+      "${InterfaceBands:-unknown}" \
       "${InterfaceHardwareBus:-unknown}" \
       "${InterfaceDriver:-unknown}" \
       "${InterfaceChipset:-unknown}"

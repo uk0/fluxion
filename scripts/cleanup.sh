@@ -22,6 +22,17 @@ for session in $(tmux ls 2>/dev/null | grep -oE '^FLUXION[^:]*'); do
 	tmux kill-session -t "$session" 2>/dev/null && echo "    killed tmux session $session"
 done
 
+echo "[*] Restoring regulatory domain..."
+_iw=$(command -v iw 2>/dev/null || echo /usr/sbin/iw)
+if [ -x "$_iw" ]; then
+	_reg=$("$_iw" reg get 2>/dev/null | grep -m1 "^country" | sed 's/country \([A-Z0-9]*\).*/\1/')
+	if [ "$_reg" = "BO" ]; then
+		"$_iw" reg set 00 2>/dev/null && echo "    regulatory domain reset from BO to 00"
+	else
+		echo "    regulatory domain is $_reg, no change needed"
+	fi
+fi
+
 echo "[*] Restoring wireless interfaces..."
 for iface in $(ip link show | grep -oE 'fluxwl[^ :@]+'); do
 	# Derive original name from MAC: wlx + mac without colons

@@ -145,6 +145,58 @@ function interface_chipset() {
   if [ -z "$InterfaceChipset" ]; then InterfaceChipset="Unknown device chipset"; fi
 }
 
+function interface_bands() {
+	if [ ! "$1" ]; then return 1; fi
+	InterfaceBands=""
+	interface_physical "$1"
+	if [ ! "$InterfacePhysical" ]; then return 2; fi
+	local __interface_bands__iw
+	__interface_bands__iw=$(command -v iw 2>/dev/null || echo /usr/sbin/iw)
+	if [ ! -x "$__interface_bands__iw" ]; then return 3; fi
+	local __interface_bands__info
+	__interface_bands__info=$("$__interface_bands__iw" phy "$InterfacePhysical" info 2>/dev/null)
+	if [ ! "$__interface_bands__info" ]; then return 4; fi
+	local __interface_bands__list=""
+	if echo "$__interface_bands__info" | grep -qE "24[0-9][0-9][.0-9]* MHz"; then __interface_bands__list="2.4GHz"; fi
+	if echo "$__interface_bands__info" | grep -qE "5[0-9]{3}[.0-9]* MHz"; then
+		[ "$__interface_bands__list" ] && __interface_bands__list="$__interface_bands__list/" || true
+		__interface_bands__list="${__interface_bands__list}5GHz"
+	fi
+	if echo "$__interface_bands__info" | grep -qE "6[0-9]{3}[.0-9]* MHz"; then
+		[ "$__interface_bands__list" ] && __interface_bands__list="$__interface_bands__list/" || true
+		__interface_bands__list="${__interface_bands__list}6GHz"
+	fi
+	InterfaceBands="${__interface_bands__list:-unknown}"
+}
+
+# Returns the bus type of a wireless interface (usb, pci, or unknown).
+# Result is stored in InterfaceBus.
+function interface_bus() {
+	if [ ! "$1" ]; then return 1; fi
+	InterfaceBus=""
+	local __device_path
+	__device_path=$(readlink -f "/sys/class/net/$1/device" 2>/dev/null)
+	if [ ! "$__device_path" ] || [ ! -d "$__device_path" ]; then
+		InterfaceBus="unknown"
+		return 2
+	fi
+	local __uevent="$__device_path/uevent"
+	if [ -f "$__uevent" ]; then
+		if grep -q "^MODALIAS=usb:" "$__uevent" 2>/dev/null; then
+			InterfaceBus="usb"; return 0
+		elif grep -q "^MODALIAS=pci:" "$__uevent" 2>/dev/null; then
+			InterfaceBus="pci"; return 0
+		elif grep -q "^MODALIAS=sdio:" "$__uevent" 2>/dev/null; then
+			InterfaceBus="sdio"; return 0
+		fi
+	fi
+	# Fallback: check the resolved device path for bus indicators.
+	if echo "$__device_path" | grep -q "/usb[0-9]*/"; then
+		InterfaceBus="usb"; return 0
+	fi
+	InterfaceBus="unknown"
+}
+
 function interface_state() {
   if [ ! "$1" ]; then return 1; fi
   local __interface_state__stateFile="/sys/class/net/$1/operstate"
