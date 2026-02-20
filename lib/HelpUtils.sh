@@ -80,6 +80,11 @@ fluxion_help(){
                 airbase-ng automatically since hostapd requires driver
                 radar/CAC support that USB adapters lack.
 
+         --reg-domain <CC>
+                Override the wireless regulatory domain used when bringing
+                up the rogue AP on 5 GHz channels (e.g. US, DE, JP).
+                Default is US. The original domain is restored on exit.
+
          --timeout <minutes>
                 Maximum duration in minutes for the attack in auto mode.
                 After this time the attack is stopped and fluxion exits.

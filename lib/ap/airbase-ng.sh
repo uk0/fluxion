@@ -72,7 +72,7 @@ function ap_service_prep() {
     local __iw=$(command -v iw 2>/dev/null || echo /usr/sbin/iw)
     if [ -x "$__iw" ]; then
       APServiceOrigRegDomain=$("$__iw" reg get 2>/dev/null | grep -m1 "^country" | sed 's/country \([A-Z0-9]*\).*/\1/')
-      "$__iw" reg set BO 2>/dev/null
+      "$__iw" reg set "${FLUXIONRegDomain:-US}" 2>/dev/null
       sleep 0.5
     fi
   fi

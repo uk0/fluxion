@@ -73,20 +73,24 @@ fluxion_window_open() {
 	elif [ "$FLUXIONDisplayMode" = "tmux" ]; then
 		# Write command to a temp script to avoid all quoting issues with tmux.
 		local cmdScript="$FLUXIONWorkspacePath/.cmd_${FLUXIONWindowCounter}.sh"
-		printf '#!/usr/bin/env bash\n%s\n' "$command" > "$cmdScript"
-		chmod +x "$cmdScript"
 
 		if [ -z "$pidVar" ]; then
 			# Foreground/blocking: create window, poll until command finishes.
 			local doneFile="$FLUXIONWorkspacePath/.window_done_${FLUXIONWindowCounter}"
 			rm -f "$doneFile"
 
+			# Use a trap so the done file is written even if the window is
+			# closed via Ctrl+C (SIGINT kills the process group before the
+			# shell can run a trailing "; echo done" suffix).
+			printf '#!/usr/bin/env bash\ntrap '"'"'echo done > "%s"'"'"' EXIT\n%s\n' \
+				"$doneFile" "$command" > "$cmdScript"
+			chmod +x "$cmdScript"
+
 			if [ "$FLUXIONDebug" ]; then
 				tmux new-window -n "$windowName" \
-					"$cmdScript; echo done > \"$doneFile\"; echo 'Press enter to close...'; read"
+					"$cmdScript; echo 'Press enter to close...'; read"
 			else
-				tmux new-window -n "$windowName" \
-					"$cmdScript; echo done > \"$doneFile\""
+				tmux new-window -n "$windowName" "$cmdScript"
 			fi
 
 			# Poll until the command finishes.
@@ -95,8 +99,14 @@ fluxion_window_open() {
 			done
 			rm -f "$doneFile"
 			rm -f "$cmdScript"
+
+			# Refocus the main pane so the caller's output is immediately
+			# visible without the user having to switch tmux windows manually.
+			[ "$TMUX_PANE" ] && tmux select-pane -t "$TMUX_PANE" 2>/dev/null
 		else
 			# Background: create detached window, get PID.
+			printf '#!/usr/bin/env bash\n%s\n' "$command" > "$cmdScript"
+			chmod +x "$cmdScript"
 			tmux new-window -d -n "$windowName" "$cmdScript"
 
 			if [ "$FLUXIONDebug" ]; then

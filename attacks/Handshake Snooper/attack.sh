@@ -126,6 +126,10 @@ handshake_snooper_arbiter_daemon() {
   mv "$FLUXIONWorkspacePath/capture/recent.cap" \
     "$FLUXIONPath/attacks/Handshake Snooper/handshakes/$FluxionTargetSSIDClean-$FluxionTargetMAC.cap"
 
+  # Write success flag so the main window polling loop can detect completion
+  # and update its display without waiting for manual user input.
+  touch "$FLUXIONWorkspacePath/handshake_success.flag"
+
   # Signal parent process the verification terminated.
   kill -s SIGABRT $1
 }
