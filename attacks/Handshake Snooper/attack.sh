@@ -49,13 +49,17 @@ handshake_snooper_arbiter_daemon() {
   # Cleanup files we've previously created to avoid conflicts.
   sandbox_remove_workfile "$FLUXIONWorkspacePath/capture/dump-*"
 
+  # Truncate the log before opening the viewer so tail -f starts clean,
+  # with no stale content from previous runs and no "file truncated" message.
+  > "$FLUXIONWorkspacePath/handshake_snooper.log"
+
   # Display some feedback to the user to assure verifier is working.
   fluxion_window_open handshake_snooper_arbiter_daemon_viewerPID \
     "Handshake Snooper Arbiter Log" "$BOTTOMLEFT" "#000000" "#CCCCCC" \
     "tail -f \"$FLUXIONWorkspacePath/handshake_snooper.log\""
 
   local now=$(env -i date '+%H:%M:%S')
-  echo -e "[$now] $HandshakeSnooperStartingArbiterNotice" > \
+  echo -e "[$now] $HandshakeSnooperStartingArbiterNotice" >> \
     "$FLUXIONWorkspacePath/handshake_snooper.log"
 
   handshake_snooper_start_captor
