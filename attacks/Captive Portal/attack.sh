@@ -1363,7 +1363,7 @@ load_attack() {
   local -r configurationPath=$1
 
   local configuration
-  readarray -t configuration < <(more "$configurationPath")
+  readarray -t configuration < "$configurationPath"
 
   CaptivePortalJammerInterfaceOriginal=${configuration[0]}
   CaptivePortalAccessPointInterfaceOriginal=${configuration[1]}

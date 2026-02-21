@@ -541,7 +541,7 @@ load_attack() {
   local -r configurationPath=$1
 
   local configuration
-  readarray -t configuration < <(more "$configurationPath")
+  readarray -t configuration < "$configurationPath"
 
   HandshakeSnooperDeauthenticatorIdentifier=${configuration[0]}
   HandshakeSnooperJammerInterfaceOriginal=${configuration[1]}

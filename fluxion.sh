@@ -22,7 +22,7 @@ readonly FLUXIONNoiseFloor=-90
 readonly FLUXIONNoiseCeiling=-60
 
 readonly FLUXIONVersion=6
-readonly FLUXIONRevision=22
+readonly FLUXIONRevision=23
 
 # Declare window ration bigger = smaller windows
 FLUXIONWindowRatio=4
@@ -53,7 +53,7 @@ for arg in "$@"; do
   esac
 done
 
-if [ $EUID -ne 0 ] && [ ! "$FLUXIONPreParseHelp" ]; then
+if [ $EUID -ne 0 ] && [ ! "$FLUXIONPreParseHelp" ] && [ ! "$FLUXIONPreParseListIfaces" ]; then
   echo -e "\\033[31mAborted, please execute the script as root.\\033[0m"; exit 1
 fi
 
@@ -198,11 +198,13 @@ shift # Remove "--" to prepare for attacks to read parameters.
 # Load user-defined preferences if there's an executable script.
 # If no script exists, prepare one for the user to store config.
 # WARNING: Preferences file must assure no redeclared constants.
-if [ -x "$FLUXIONPreferencesFile" ]; then
-  source "$FLUXIONPreferencesFile"
-else
-  echo '#!/usr/bin/env bash' > "$FLUXIONPreferencesFile"
-  chmod u+x "$FLUXIONPreferencesFile"
+if [ $EUID -eq 0 ]; then
+  if [ -x "$FLUXIONPreferencesFile" ]; then
+    source "$FLUXIONPreferencesFile"
+  else
+    echo '#!/usr/bin/env bash' > "$FLUXIONPreferencesFile"
+    chmod u+x "$FLUXIONPreferencesFile"
+  fi
 fi
 
 # ================ < Configurable Constants > ================ #
@@ -656,7 +658,7 @@ fluxion_handle_target_change() {
   echo "Target change signal received!" > $FLUXIONOutputDevice
 
   local targetInfo
-  readarray -t targetInfo < <(more "$FLUXIONWorkspacePath/target_info.txt")
+  readarray -t targetInfo < "$FLUXIONWorkspacePath/target_info.txt"
 
   FluxionTargetMAC=${targetInfo[0]}
   FluxionTargetSSID=${targetInfo[1]}
