@@ -22,7 +22,7 @@ readonly FLUXIONNoiseFloor=-90
 readonly FLUXIONNoiseCeiling=-60
 
 readonly FLUXIONVersion=6
-readonly FLUXIONRevision=24
+readonly FLUXIONRevision=25
 
 # Declare window ration bigger = smaller windows
 FLUXIONWindowRatio=4
@@ -1745,7 +1745,7 @@ fluxion_get_target() {
 
   # Add notice if networks were filtered
   if [ $filteredCount -gt 0 ]; then
-    headerTitle+="${CYel}Note: $filteredCount network(s) with existing handshakes were filtered$CClr\n\n"
+    headerTitle+="${CBRed}Note: $filteredCount network(s) with existing handshakes were filtered$CClr\n\n"
   fi
 
   # Add DFS legend if any candidate is on a DFS channel
