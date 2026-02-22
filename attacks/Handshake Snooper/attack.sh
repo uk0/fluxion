@@ -134,6 +134,11 @@ handshake_snooper_arbiter_daemon() {
   # and update its display without waiting for manual user input.
   touch "$FLUXIONWorkspacePath/handshake_success.flag"
 
+  # Close the log viewer — success feedback is shown in the main window.
+  if [ "$handshake_snooper_arbiter_daemon_viewerPID" ]; then
+    kill $handshake_snooper_arbiter_daemon_viewerPID
+  fi
+
   # Signal parent process the verification terminated.
   kill -s SIGABRT $1
 }
